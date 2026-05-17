@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(gh:*)",
+      "Bash(git:*)",
+      "Bash(grep:*)",
+      "Bash(jq:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(sort:*)",
+      "Bash(touch:*)",
+      "Bash(wc:*)",
+      "Read(~/.claude/*)"
+    ],
+    "deny": [
+      "Bash(gh repo delete:*)",
+      "Bash(gh repo delete)",
+      "Bash(gh repo archive:*)",
+      "Bash(gh repo archive)",
+      "Bash(rm -rf:*)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}
