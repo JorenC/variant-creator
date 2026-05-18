@@ -1,0 +1,328 @@
+import type { SvgTreeNode } from "@/utils/svgTree";
+import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import { resolveTransforms } from "@/utils/svgTransform";
+
+const INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape";
+const SODIPODI_NS = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd";
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// Namespaces whose attributes are always stripped from the output
+const STRIP_NAMESPACES = new Set([INKSCAPE_NS, SODIPODI_NS]);
+// Non-namespaced attributes that are Inkscape/sodipodi conventions we don't want
+const STRIP_ATTRS = new Set(["sodipodi:docname", "sodipodi:version", "inkscape:version"]);
+
+function getElementByKey(root: Element, key: string): Element | null {
+  const indices = key.replace(/^root-/, "").split("-").map(Number);
+  let el: Element = root;
+  for (const idx of indices) {
+    const child = el.children[idx];
+    if (!child) return null;
+    el = child;
+  }
+  return el;
+}
+
+function makeLayerGroup(doc: Document, id: string): Element {
+  const g = doc.createElementNS(SVG_NS, "g");
+  g.setAttribute("id", id);
+  return g;
+}
+
+// ─── Stripping ─────────────────────────────────────────────────────────────────
+
+function stripElement(el: Element): void {
+  // Remove namespaced attributes belonging to inkscape/sodipodi
+  const toRemove: Attr[] = [];
+  for (let i = 0; i < el.attributes.length; i++) {
+    const attr = el.attributes[i];
+    if (
+      (attr.namespaceURI && STRIP_NAMESPACES.has(attr.namespaceURI)) ||
+      STRIP_ATTRS.has(attr.name)
+    ) {
+      toRemove.push(attr);
+    }
+  }
+  toRemove.forEach(a => el.removeAttributeNode(a));
+
+  for (const child of Array.from(el.children)) {
+    stripElement(child);
+  }
+}
+
+function stripRootNamespaces(root: Element): void {
+  root.removeAttributeNS(null, "xmlns:inkscape");
+  root.removeAttributeNS(null, "xmlns:sodipodi");
+  root.removeAttributeNS(null, "xmlns:dc");
+  root.removeAttributeNS(null, "xmlns:cc");
+  root.removeAttributeNS(null, "xmlns:rdf");
+  // The serializer may write xmlns:* as plain attrs; remove by name too
+  ["xmlns:inkscape", "xmlns:sodipodi", "xmlns:dc", "xmlns:cc", "xmlns:rdf"].forEach(
+    name => { if (root.hasAttribute(name)) root.removeAttribute(name); }
+  );
+}
+
+function removeNonSvgChildren(root: Element): void {
+  const remove: Element[] = [];
+  for (const child of Array.from(root.children)) {
+    const tag = child.tagName.toLowerCase();
+    if (
+      tag === "metadata" ||
+      tag === "sodipodi:namedview" ||
+      tag === "title" ||
+      tag === "desc"
+    ) {
+      remove.push(child);
+    }
+  }
+  remove.forEach(el => el.parentNode?.removeChild(el));
+}
+
+// ─── Typography normalization ──────────────────────────────────────────────────
+
+const FONT_STYLE_PROPS = [
+  "font-size", "font-family", "font-weight", "font-style",
+  "fill", "letter-spacing", "text-anchor",
+];
+
+function normalizeTextElement(text: Element): void {
+  // Hoist font styles from style attribute to presentation attributes, then
+  // remove Inkscape-specific style properties from the style string.
+  const styleAttr = text.getAttribute("style");
+  if (styleAttr) {
+    const props = parseStyleAttr(styleAttr);
+
+    // Remove known-non-standard Inkscape style properties
+    // Strip Inkscape/non-standard style properties
+    const STRIP_STYLE_PROPS = [
+      "line-height", "-inkscape-font-specification", "baseline-shift",
+      "font-variant", "font-stretch", "font-variant-ligatures",
+      "font-variant-caps", "font-variant-numeric", "font-feature-settings",
+      "text-align", "writing-mode", "display",
+    ];
+    STRIP_STYLE_PROPS.forEach(p => delete props[p]);
+
+    // Rebuild clean style (omit properties that are now presentation attrs or empty)
+    const cleanStyle = Object.entries(props)
+      .filter(([, v]) => v !== "")
+      .map(([k, v]) => `${k}:${v}`)
+      .join(";");
+
+    if (cleanStyle) text.setAttribute("style", cleanStyle);
+    else text.removeAttribute("style");
+  }
+
+  // Remove xml:space (Inkscape adds this; browsers handle whitespace fine)
+  text.removeAttribute("xml:space");
+
+  // Recurse into tspan children
+  for (const child of Array.from(text.children)) {
+    if (child.tagName.toLowerCase() === "tspan") {
+      normalizeTextElement(child);
+    }
+  }
+}
+
+function parseStyleAttr(style: string): Record<string, string> {
+  const props: Record<string, string> = {};
+  style.split(";").forEach(part => {
+    const colon = part.indexOf(":");
+    if (colon === -1) return;
+    const key = part.slice(0, colon).trim();
+    const val = part.slice(colon + 1).trim();
+    if (key) props[key] = val;
+  });
+  return props;
+}
+
+function normalizeTextInLayer(layer: Element): void {
+  for (const child of Array.from(layer.querySelectorAll("text"))) {
+    normalizeTextElement(child);
+  }
+}
+
+// ─── Collapse single-tspan text elements ─────────────────────────────────────
+// Inkscape wraps every label in <text><tspan sodipodi:role="line" x y>…</tspan></text>.
+// After stripping sodipodi attrs, simplify to <text x y>content</text>.
+
+function collapseTspans(layer: Element): void {
+  for (const text of Array.from(layer.querySelectorAll("text"))) {
+    // Rotated text must keep its tspan — the tspan x/y live in the rotated
+    // coordinate frame and cannot be collapsed without losing the rotation.
+    if (text.hasAttribute("transform")) continue;
+
+    const tspans = Array.from(text.children).filter(
+      c => c.tagName.toLowerCase() === "tspan"
+    );
+    if (tspans.length !== 1) continue;
+    const tspan = tspans[0];
+
+    // Copy x/y from tspan to text if text is missing them
+    const tx = text.getAttribute("x");
+    const ty = text.getAttribute("y");
+    const sx = tspan.getAttribute("x");
+    const sy = tspan.getAttribute("y");
+
+    if (sx !== null && (tx === null || tx === "0")) text.setAttribute("x", sx);
+    if (sy !== null && (ty === null || ty === "0")) text.setAttribute("y", sy);
+
+    // Inherit font style if tspan has it and text doesn't
+    FONT_STYLE_PROPS.forEach(prop => {
+      if (!text.hasAttribute(prop) && tspan.hasAttribute(prop)) {
+        text.setAttribute(prop, tspan.getAttribute(prop)!);
+      }
+    });
+
+    // Replace <text><tspan>content</tspan></text> with <text>content</text>
+    text.textContent = tspan.textContent ?? "";
+  }
+}
+
+// ─── Main export ─────────────────────────────────────────────────────────────
+
+export function buildDsvgOutput(
+  svgContent: string,
+  assignments: LayerAssignments
+): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const root = doc.documentElement;
+
+  // 1. Resolve all transform attributes → bake into coordinates
+  resolveTransforms(root);
+
+  // 2. Strip non-SVG elements from root
+  removeNonSvgChildren(root);
+
+  // 3. Clone assigned layers
+  const cloneByKey = (key: string | null): Element | null => {
+    if (!key) return null;
+    const el = getElementByKey(root, key);
+    return el ? (el.cloneNode(true) as Element) : null;
+  };
+
+  const provincesEl = cloneByKey(assignments.provinces);
+  const namedCoastsEl = cloneByKey(assignments.namedCoasts);
+  const provinceNamesEl = cloneByKey(assignments.provinceNames);
+  const bordersEl = cloneByKey(assignments.borders);
+
+  // 4. Classify sibling groups as background/foreground
+  const backgroundNodes: Element[] = [];
+  const foregroundNodes: Element[] = [];
+
+  if (assignments.provinces) {
+    const provincesPath = assignments.provinces
+      .replace(/^root-/, "")
+      .split("-")
+      .map(Number);
+    const provincesLocalIdx = provincesPath[provincesPath.length - 1];
+    const parentPath = provincesPath.slice(0, -1);
+
+    let parentEl: Element = root;
+    let navigated = true;
+    for (const idx of parentPath) {
+      const child = parentEl.children[idx];
+      if (!child) { navigated = false; break; }
+      parentEl = child;
+    }
+
+    if (navigated) {
+      const assignedLocalIndices = new Set<number>();
+      for (const key of [
+        assignments.provinces,
+        assignments.namedCoasts,
+        assignments.provinceNames,
+        assignments.borders,
+      ]) {
+        if (!key) continue;
+        const kPath = key.replace(/^root-/, "").split("-").map(Number);
+        if (kPath.length !== provincesPath.length) continue;
+        const kParent = kPath.slice(0, -1);
+        if (!kParent.every((v, i) => v === parentPath[i])) continue;
+        assignedLocalIndices.add(kPath[kPath.length - 1]);
+      }
+
+      Array.from(parentEl.children).forEach((child, i) => {
+        if (child.tagName.toLowerCase() !== "g") return;
+        if (assignedLocalIndices.has(i)) return;
+        const clone = child.cloneNode(true) as Element;
+        if (i < provincesLocalIdx) backgroundNodes.push(clone);
+        else foregroundNodes.push(clone);
+      });
+    }
+  }
+
+  // 5. Collect non-<g> root children (defs, style, etc.)
+  const headerNodes: Node[] = [];
+  Array.from(root.childNodes).forEach(child => {
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      headerNodes.push(child.cloneNode(true));
+    } else if ((child as Element).tagName.toLowerCase() !== "g") {
+      headerNodes.push(child.cloneNode(true));
+    }
+  });
+
+  // 6. Build clean output document
+  while (root.firstChild) root.removeChild(root.firstChild);
+  headerNodes.forEach(n => root.appendChild(n));
+
+  const bg = makeLayerGroup(doc, "background");
+  backgroundNodes.forEach(el => bg.appendChild(el));
+  root.appendChild(bg);
+
+  const pLayer = provincesEl ?? makeLayerGroup(doc, "provinces");
+  pLayer.setAttribute("id", "provinces");
+  pLayer.setAttribute("style", "display:none");
+  root.appendChild(pLayer);
+
+  const ncLayer = namedCoastsEl ?? makeLayerGroup(doc, "named-coasts");
+  ncLayer.setAttribute("id", "named-coasts");
+  ncLayer.setAttribute("style", "display:none");
+  root.appendChild(ncLayer);
+
+  const pnLayer = provinceNamesEl ?? makeLayerGroup(doc, "province-names");
+  pnLayer.setAttribute("id", "province-names");
+  normalizeTextInLayer(pnLayer);
+  collapseTspans(pnLayer);
+  root.appendChild(pnLayer);
+
+  const bLayer = bordersEl ?? makeLayerGroup(doc, "borders");
+  bLayer.setAttribute("id", "borders");
+  root.appendChild(bLayer);
+
+  const fg = makeLayerGroup(doc, "foreground");
+  foregroundNodes.forEach(el => fg.appendChild(el));
+  root.appendChild(fg);
+
+  // 7. Strip all Inkscape/sodipodi attributes from the whole tree
+  stripElement(root);
+  stripRootNamespaces(root);
+
+  return new XMLSerializer().serializeToString(doc);
+}
+
+// ─── Preview helper (unchanged) ───────────────────────────────────────────────
+
+export function buildVisibilityPreviewSvg(
+  svgContent: string,
+  nodes: SvgTreeNode[],
+  visibleKeys: Set<string>
+): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const root = doc.documentElement;
+
+  for (const node of nodes) {
+    const el = getElementByKey(root, node.key);
+    if (!el) continue;
+    const style = el.getAttribute("style") ?? "";
+    const cleaned = style.replace(/display\s*:\s*[^;]+;?\s*/g, "").trim();
+    if (visibleKeys.has(node.key)) {
+      if (cleaned) el.setAttribute("style", cleaned);
+      else el.removeAttribute("style");
+    } else {
+      el.setAttribute("style", cleaned ? `${cleaned};display:none` : "display:none");
+    }
+  }
+
+  return new XMLSerializer().serializeToString(doc);
+}

@@ -1,11 +1,14 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { HomePage } from "@/components/HomePage";
 import { LandingPage } from "@/components/LandingPage";
+import { DSvgCreator } from "@/components/dsvg/DSvgCreator";
 import { WizardLayout } from "@/components/wizard/WizardLayout";
 import { PhaseSetup } from "@/components/wizard/PhaseSetup";
 import { PhaseProvinces } from "@/components/wizard/PhaseProvinces";
 import { PhaseTextAssoc } from "@/components/wizard/PhaseTextAssoc";
 import { PhaseAdjacencies } from "@/components/wizard/PhaseAdjacencies";
 import { PhaseVisualEditor } from "@/components/wizard/PhaseVisualEditor";
+import { PhaseExport } from "@/components/wizard/PhaseExport";
 
 const WIZARD_PHASES = [
   { path: "0", title: "Variant Setup", component: PhaseSetup },
@@ -13,6 +16,7 @@ const WIZARD_PHASES = [
   { path: "2", title: "Province Details", component: PhaseProvinces },
   { path: "3", title: "Adjacencies", component: PhaseAdjacencies },
   { path: "4", title: "Visual Editor", component: PhaseVisualEditor },
+  { path: "5", title: "Review & Export", component: PhaseExport },
 ];
 
 function WizardOutlet() {
@@ -26,7 +30,15 @@ function WizardOutlet() {
 export const router = createBrowserRouter([
   {
     path: "/",
+    element: <HomePage />,
+  },
+  {
+    path: "/variant-creator",
     element: <LandingPage />,
+  },
+  {
+    path: "/dsvg-creator",
+    element: <DSvgCreator />,
   },
   {
     path: "/phase",
