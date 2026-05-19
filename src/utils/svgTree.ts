@@ -15,7 +15,7 @@ const SKIP_TAGS = new Set([
   "desc",
 ]);
 
-function getGroupName(el: Element): string {
+function getGroupName(el: Element): string | null {
   return (
     el.getAttribute("inkscape:label") ??
     el.getAttribute("id") ??

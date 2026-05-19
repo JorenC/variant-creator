@@ -8,6 +8,7 @@ const createValidVariant = (): VariantDefinition => ({
   author: "Test Author",
   version: "1.0.0",
   soloVictorySCCount: 18,
+  startYear: 1901,
   nations: [
     { id: "england", name: "England", color: "#FF0000" },
     { id: "france", name: "France", color: "#0000FF" },

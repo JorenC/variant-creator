@@ -11,6 +11,7 @@ const createTestVariant = (
   author: "",
   version: "1.0.0",
   soloVictorySCCount: 18,
+  startYear: 1901,
   nations: [],
   provinces: [
     {

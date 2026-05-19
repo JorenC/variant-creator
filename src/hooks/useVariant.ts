@@ -17,7 +17,7 @@ function loadFromStorage(): VariantDefinition | null {
 
 type VariantMetadata = Pick<
   VariantDefinition,
-  "name" | "description" | "author" | "soloVictorySCCount"
+  "name" | "description" | "author" | "soloVictorySCCount" | "startYear"
 >;
 
 export function useVariant() {

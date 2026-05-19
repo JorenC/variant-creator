@@ -10,6 +10,7 @@ const createMockVariant = (
   author: "",
   version: "1.0.0",
   soloVictorySCCount: 0,
+  startYear: 1901,
   nations: [],
   provinces: [],
   namedCoasts: [],

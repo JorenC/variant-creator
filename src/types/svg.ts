@@ -1,4 +1,8 @@
-export type SvgValidationErrorCode = "INVALID_XML" | "NOT_SVG";
+export type SvgValidationErrorCode =
+  | "INVALID_XML"
+  | "NOT_SVG"
+  | "MISSING_PROVINCES_LAYER"
+  | "EMPTY_PROVINCES_LAYER";
 
 export interface SvgValidationError {
   code: SvgValidationErrorCode;
