@@ -54,7 +54,7 @@ import {
   getIsolatedIds,
 } from "@/utils/dvarAdjacency";
 import type { ParsedDsvg } from "@/utils/parseDsvg";
-import type { DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
+import type { DvarAdjacency, DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
 
 type Step =
   | "upload"
@@ -120,7 +120,7 @@ const basicInfoSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "Lowercase letters, numbers, and hyphens only"),
   description: z.string().min(1, "Description is required"),
   author: z.string().min(1, "Author is required"),
-  startYear: z.number({ invalid_type_error: "Required" }).int(),
+  startYear: z.number({ message: "Required" }).int(),
   rules: z.string(),
 });
 
