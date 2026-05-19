@@ -77,111 +77,12 @@ function removeNonSvgChildren(root: Element): void {
   remove.forEach(el => el.parentNode?.removeChild(el));
 }
 
-// ─── Typography normalization ──────────────────────────────────────────────────
-
-const FONT_STYLE_PROPS = [
-  "font-size", "font-family", "font-weight", "font-style",
-  "fill", "letter-spacing", "text-anchor",
-];
-
-function normalizeTextElement(text: Element): void {
-  // Hoist font styles from style attribute to presentation attributes, then
-  // remove Inkscape-specific style properties from the style string.
-  const styleAttr = text.getAttribute("style");
-  if (styleAttr) {
-    const props = parseStyleAttr(styleAttr);
-
-    // Remove known-non-standard Inkscape style properties
-    // Strip Inkscape/non-standard style properties
-    const STRIP_STYLE_PROPS = [
-      "line-height", "-inkscape-font-specification", "baseline-shift",
-      "font-variant", "font-stretch", "font-variant-ligatures",
-      "font-variant-caps", "font-variant-numeric", "font-feature-settings",
-      "text-align", "writing-mode", "display",
-    ];
-    STRIP_STYLE_PROPS.forEach(p => delete props[p]);
-
-    // Rebuild clean style (omit properties that are now presentation attrs or empty)
-    const cleanStyle = Object.entries(props)
-      .filter(([, v]) => v !== "")
-      .map(([k, v]) => `${k}:${v}`)
-      .join(";");
-
-    if (cleanStyle) text.setAttribute("style", cleanStyle);
-    else text.removeAttribute("style");
-  }
-
-  // Remove xml:space (Inkscape adds this; browsers handle whitespace fine)
-  text.removeAttribute("xml:space");
-
-  // Recurse into tspan children
-  for (const child of Array.from(text.children)) {
-    if (child.tagName.toLowerCase() === "tspan") {
-      normalizeTextElement(child);
-    }
-  }
-}
-
-function parseStyleAttr(style: string): Record<string, string> {
-  const props: Record<string, string> = {};
-  style.split(";").forEach(part => {
-    const colon = part.indexOf(":");
-    if (colon === -1) return;
-    const key = part.slice(0, colon).trim();
-    const val = part.slice(colon + 1).trim();
-    if (key) props[key] = val;
-  });
-  return props;
-}
-
-function normalizeTextInLayer(layer: Element): void {
-  for (const child of Array.from(layer.querySelectorAll("text"))) {
-    normalizeTextElement(child);
-  }
-}
-
-// ─── Collapse single-tspan text elements ─────────────────────────────────────
-// Inkscape wraps every label in <text><tspan sodipodi:role="line" x y>…</tspan></text>.
-// After stripping sodipodi attrs, simplify to <text x y>content</text>.
-
-function collapseTspans(layer: Element): void {
-  for (const text of Array.from(layer.querySelectorAll("text"))) {
-    // Rotated text must keep its tspan — the tspan x/y live in the rotated
-    // coordinate frame and cannot be collapsed without losing the rotation.
-    if (text.hasAttribute("transform")) continue;
-
-    const tspans = Array.from(text.children).filter(
-      c => c.tagName.toLowerCase() === "tspan"
-    );
-    if (tspans.length !== 1) continue;
-    const tspan = tspans[0];
-
-    // Copy x/y from tspan to text if text is missing them
-    const tx = text.getAttribute("x");
-    const ty = text.getAttribute("y");
-    const sx = tspan.getAttribute("x");
-    const sy = tspan.getAttribute("y");
-
-    if (sx !== null && (tx === null || tx === "0")) text.setAttribute("x", sx);
-    if (sy !== null && (ty === null || ty === "0")) text.setAttribute("y", sy);
-
-    // Inherit font style if tspan has it and text doesn't
-    FONT_STYLE_PROPS.forEach(prop => {
-      if (!text.hasAttribute(prop) && tspan.hasAttribute(prop)) {
-        text.setAttribute(prop, tspan.getAttribute(prop)!);
-      }
-    });
-
-    // Replace <text><tspan>content</tspan></text> with <text>content</text>
-    text.textContent = tspan.textContent ?? "";
-  }
-}
-
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function buildDsvgOutput(
   svgContent: string,
-  assignments: LayerAssignments
+  assignments: LayerAssignments,
+  unitPositionCodes: Record<string, string> = {}
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -202,8 +103,7 @@ export function buildDsvgOutput(
 
   const provincesEl = cloneByKey(assignments.provinces);
   const namedCoastsEl = cloneByKey(assignments.namedCoasts);
-  const provinceNamesEl = cloneByKey(assignments.provinceNames);
-  const bordersEl = cloneByKey(assignments.borders);
+  const unitPositionsEl = cloneByKey(assignments.unitPositions);
 
   // 4. Classify sibling groups as background/foreground
   const backgroundNodes: Element[] = [];
@@ -230,8 +130,7 @@ export function buildDsvgOutput(
       for (const key of [
         assignments.provinces,
         assignments.namedCoasts,
-        assignments.provinceNames,
-        assignments.borders,
+        assignments.unitPositions,
       ]) {
         if (!key) continue;
         const kPath = key.replace(/^root-/, "").split("-").map(Number);
@@ -279,15 +178,16 @@ export function buildDsvgOutput(
   ncLayer.setAttribute("style", "display:none");
   root.appendChild(ncLayer);
 
-  const pnLayer = provinceNamesEl ?? makeLayerGroup(doc, "province-names");
-  pnLayer.setAttribute("id", "province-names");
-  normalizeTextInLayer(pnLayer);
-  collapseTspans(pnLayer);
-  root.appendChild(pnLayer);
-
-  const bLayer = bordersEl ?? makeLayerGroup(doc, "borders");
-  bLayer.setAttribute("id", "borders");
-  root.appendChild(bLayer);
+  const upLayer = unitPositionsEl ?? makeLayerGroup(doc, "unit-positions");
+  upLayer.setAttribute("id", "unit-positions");
+  upLayer.setAttribute("style", "display:none");
+  for (const child of Array.from(upLayer.children)) {
+    const id = child.getAttribute("id");
+    if (id && unitPositionCodes[id]) {
+      child.setAttribute("id", `${unitPositionCodes[id].toLowerCase()}-position`);
+    }
+  }
+  root.appendChild(upLayer);
 
   const fg = makeLayerGroup(doc, "foreground");
   foregroundNodes.forEach(el => fg.appendChild(el));

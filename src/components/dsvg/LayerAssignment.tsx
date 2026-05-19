@@ -13,8 +13,7 @@ import type { SvgTreeNode } from "@/utils/svgTree";
 export interface LayerAssignments {
   provinces: string | null;
   namedCoasts: string | null;
-  provinceNames: string | null;
-  borders: string | null;
+  unitPositions: string | null;
 }
 
 const LAYER_FIELDS: {
@@ -35,14 +34,10 @@ const LAYER_FIELDS: {
       "Shapes for named coastal sub-regions (e.g. stp/nc, spa/sc). Optional.",
   },
   {
-    key: "provinceNames",
-    label: "Province Names",
-    description: "Text labels for province names. Optional.",
-  },
-  {
-    key: "borders",
-    label: "Borders",
-    description: "Border lines between provinces. Optional.",
+    key: "unitPositions",
+    label: "Unit Positions",
+    description:
+      "Reference markers for where units are placed on the map. Each element should have an ID matching a province abbreviation.",
   },
 ];
 
@@ -70,7 +65,7 @@ export function LayerAssignment({
       <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
         <p className="mb-3 font-medium text-foreground">How layers work</p>
         <p className="mb-2">
-          The output SVG uses six fixed layers in order:
+          The output SVG uses five fixed layers in order:
         </p>
         <ol className="mb-3 list-inside list-decimal space-y-1">
           <li>
@@ -87,17 +82,13 @@ export function LayerAssignment({
             Shapes for named coastal sub-regions.
           </li>
           <li>
-            <span className="font-medium text-foreground">province-names</span>{" "}
-            — Text labels for provinces.
-          </li>
-          <li>
-            <span className="font-medium text-foreground">borders</span> —
-            Border lines.
+            <span className="font-medium text-foreground">unit-positions</span>{" "}
+            — Reference markers for unit placement.
           </li>
           <li>
             <span className="font-medium text-foreground">foreground</span> —
-            All layers above <code>provinces</code> that are not one of the four
-            named layers, grouped with sub-structure preserved.
+            All remaining layers above <code>provinces</code>, grouped with
+            sub-structure preserved.
           </li>
         </ol>
         <p>
@@ -110,7 +101,7 @@ export function LayerAssignment({
       <div className="grid gap-10 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <p className="text-sm font-medium">
-            Assign your SVG layers to the four named layers. All fields are optional.
+            Assign your SVG layers to the three named layers. All fields are optional.
           </p>
 
           {LAYER_FIELDS.map(({ key, label, description }) => (

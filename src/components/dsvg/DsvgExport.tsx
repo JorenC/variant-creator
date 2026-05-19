@@ -10,11 +10,12 @@ import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
 interface DsvgExportProps {
   svgContent: string;
   assignments: LayerAssignments;
+  unitPositionCodes: Record<string, string>;
   tree: SvgTreeNode[];
   fileName: string;
 }
 
-export function DsvgExport({ svgContent, assignments, tree, fileName }: DsvgExportProps) {
+export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, fileName }: DsvgExportProps) {
   const displayNodes = useMemo(
     () => tree.flatMap(n => (n.children.length > 0 ? n.children : [n])),
     [tree]
@@ -23,7 +24,7 @@ export function DsvgExport({ svgContent, assignments, tree, fileName }: DsvgExpo
   // Split displayNodes into background/foreground based on position relative to provinces
   const { backgroundItems, foregroundItems } = useMemo(() => {
     const assignedKeySet = new Set(
-      [assignments.provinces, assignments.namedCoasts, assignments.provinceNames, assignments.borders]
+      [assignments.provinces, assignments.namedCoasts, assignments.unitPositions]
         .filter((k): k is string => k !== null)
     );
     const provincesIdx = assignments.provinces
@@ -93,7 +94,7 @@ export function DsvgExport({ svgContent, assignments, tree, fileName }: DsvgExpo
   }, [svgContent]);
 
   const handleDownload = () => {
-    const output = buildDsvgOutput(svgContent, assignments);
+    const output = buildDsvgOutput(svgContent, assignments, unitPositionCodes);
     const baseName = fileName.replace(/\.svg$/i, "");
     const blob = new Blob([output], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
@@ -109,8 +110,7 @@ export function DsvgExport({ svgContent, assignments, tree, fileName }: DsvgExpo
     [
       { label: "provinces", key: assignments.provinces },
       { label: "named-coasts", key: assignments.namedCoasts },
-      { label: "province-names", key: assignments.provinceNames },
-      { label: "borders", key: assignments.borders },
+      { label: "unit-positions", key: assignments.unitPositions },
     ] as { label: string; key: string | null }[]
   ).filter((l): l is { label: string; key: string } => l.key !== null);
 

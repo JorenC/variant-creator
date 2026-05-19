@@ -5,33 +5,36 @@ import { Button } from "@/components/ui/button";
 import { LayerAssignment } from "@/components/dsvg/LayerAssignment";
 import { LayerPreview } from "@/components/dsvg/LayerPreview";
 import { NamedCoastEditor } from "@/components/dsvg/NamedCoastEditor";
+import { UnitPositionEditor } from "@/components/dsvg/UnitPositionEditor";
 import { DsvgExport } from "@/components/dsvg/DsvgExport";
 import { parseSvgTree, validateAnySvg } from "@/utils/svgTree";
 import type { SvgTreeNode } from "@/utils/svgTree";
 import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
 import type { LayerPreviewHandle } from "@/components/dsvg/LayerPreview";
 import type { NamedCoastEditorHandle } from "@/components/dsvg/NamedCoastEditor";
+import type { UnitPositionEditorHandle } from "@/components/dsvg/UnitPositionEditor";
 
-type Step = "upload" | "assign" | "preview" | "named-coasts" | "done";
+type Step = "upload" | "assign" | "preview" | "named-coasts" | "unit-positions" | "done";
 
 const DEFAULT_ASSIGNMENTS: LayerAssignments = {
   provinces: null,
   namedCoasts: null,
-  provinceNames: null,
-  borders: null,
+  unitPositions: null,
 };
 
 const STEP_TITLES: Record<Exclude<Step, "upload">, string> = {
   assign: "Assign layers",
   preview: "Province abbreviations",
   "named-coasts": "Named coasts",
+  "unit-positions": "Unit positions",
   done: "Review & export",
 };
 
 const STEP_SUBTITLES: Record<Exclude<Step, "upload">, string> = {
-  assign: "Map your SVG layers to the four named layers.",
+  assign: "Map your SVG layers to provinces and named coasts.",
   preview: "Review layers and set province abbreviations.",
   "named-coasts": "Assign parent provinces and abbreviations to each named coast.",
+  "unit-positions": "Assign a three-letter code to each unit position marker.",
   done: "Toggle layer visibility and download your dSVG file.",
 };
 
@@ -39,7 +42,8 @@ const PREV_STEP: Record<Exclude<Step, "upload">, Step> = {
   assign: "upload",
   preview: "assign",
   "named-coasts": "preview",
-  done: "named-coasts",
+  "unit-positions": "named-coasts",
+  done: "unit-positions",
 };
 
 export function DSvgCreator() {
@@ -54,10 +58,12 @@ export function DSvgCreator() {
   const [provinceAbbrs, setProvinceAbbrs] = useState<Record<string, string>>(
     {}
   );
+  const [unitPositionCodes, setUnitPositionCodes] = useState<Record<string, string>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const layerPreviewRef = useRef<LayerPreviewHandle>(null);
   const namedCoastEditorRef = useRef<NamedCoastEditorHandle>(null);
+  const unitPositionEditorRef = useRef<UnitPositionEditorHandle>(null);
 
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".svg")) {
@@ -78,6 +84,7 @@ export function DSvgCreator() {
     setTree(parseSvgTree(content));
     setAssignments(DEFAULT_ASSIGNMENTS);
     setProvinceAbbrs({});
+    setUnitPositionCodes({});
     setStep("assign");
   };
 
@@ -101,6 +108,7 @@ export function DSvgCreator() {
     setError(null);
     setAssignments(DEFAULT_ASSIGNMENTS);
     setProvinceAbbrs({});
+    setUnitPositionCodes({});
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -118,7 +126,15 @@ export function DSvgCreator() {
       return;
     }
     if (step === "named-coasts") {
-      setStep("done");
+      setStep("unit-positions");
+      return;
+    }
+    if (step === "unit-positions") {
+      const codes = unitPositionEditorRef.current?.validate();
+      if (codes) {
+        setUnitPositionCodes(codes);
+        setStep("done");
+      }
       return;
     }
   };
@@ -215,10 +231,20 @@ export function DSvgCreator() {
               />
             )}
 
+            {step === "unit-positions" && svgContent && (
+              <UnitPositionEditor
+                ref={unitPositionEditorRef}
+                svgContent={svgContent}
+                assignments={assignments}
+                provinceAbbrs={provinceAbbrs}
+              />
+            )}
+
             {step === "done" && svgContent && tree && (
               <DsvgExport
                 svgContent={svgContent}
                 assignments={assignments}
+                unitPositionCodes={unitPositionCodes}
                 tree={tree}
                 fileName={fileName ?? "map.svg"}
               />

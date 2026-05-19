@@ -77,11 +77,6 @@ export const NamedCoastEditor = forwardRef<
     [svgContent, assignments.provinces]
   );
 
-  const borderPaths = useMemo(
-    () => extractLayerPaths(svgContent, assignments.borders),
-    [svgContent, assignments.borders]
-  );
-
   const [entries, setEntries] = useState<Record<string, CoastState>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -271,16 +266,6 @@ export const NamedCoastEditor = forwardRef<
                   fill="black"
                   fillOpacity="0.1"
                   stroke="none"
-                />
-              ))}
-              {borderPaths.map((d, i) => (
-                <path
-                  key={`b-${i}`}
-                  d={d}
-                  fill="none"
-                  stroke="black"
-                  strokeOpacity="0.1"
-                  strokeWidth="2"
                 />
               ))}
               {focusedPaths.map((d, i) => (

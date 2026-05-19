@@ -3,10 +3,44 @@ export interface ProvinceElement {
   pathData: string[];
 }
 
+function shapeToPathD(el: Element): string | null {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "circle") {
+    const cx = parseFloat(el.getAttribute("cx") ?? "0");
+    const cy = parseFloat(el.getAttribute("cy") ?? "0");
+    const r = parseFloat(el.getAttribute("r") ?? "0");
+    if (r <= 0) return null;
+    return `M ${cx - r},${cy} a ${r},${r} 0 1,0 ${r * 2},0 a ${r},${r} 0 1,0 ${-r * 2},0 Z`;
+  }
+  if (tag === "ellipse") {
+    const cx = parseFloat(el.getAttribute("cx") ?? "0");
+    const cy = parseFloat(el.getAttribute("cy") ?? "0");
+    const rx = parseFloat(el.getAttribute("rx") ?? "0");
+    const ry = parseFloat(el.getAttribute("ry") ?? "0");
+    if (rx <= 0 || ry <= 0) return null;
+    return `M ${cx - rx},${cy} a ${rx},${ry} 0 1,0 ${rx * 2},0 a ${rx},${ry} 0 1,0 ${-rx * 2},0 Z`;
+  }
+  if (tag === "rect") {
+    const x = parseFloat(el.getAttribute("x") ?? "0");
+    const y = parseFloat(el.getAttribute("y") ?? "0");
+    const w = parseFloat(el.getAttribute("width") ?? "0");
+    const h = parseFloat(el.getAttribute("height") ?? "0");
+    if (w <= 0 || h <= 0) return null;
+    return `M ${x},${y} H ${x + w} V ${y + h} H ${x} Z`;
+  }
+  return null;
+}
+
 function collectPathData(el: Element): string[] {
   const paths: string[] = [];
-  const d = el.getAttribute("d");
-  if (d) paths.push(d);
+  const tag = el.tagName.toLowerCase();
+  if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) paths.push(d);
+  } else {
+    const d = shapeToPathD(el);
+    if (d) paths.push(d);
+  }
   Array.from(el.children).forEach(child => paths.push(...collectPathData(child)));
   return paths;
 }
