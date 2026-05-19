@@ -215,6 +215,36 @@ function buildInitialProvinces(dsvg: ParsedDsvg): ProvincesFormValues["provinces
   }));
 }
 
+// ─── dVAR import types ────────────────────────────────────────────────────────
+
+interface DvarJsonAdjacency { to: string; pass: string; }
+interface DvarJsonNation { id: string; name: string; color: string; }
+interface DvarJsonNamedCoast { id: string; name: string; parentProvince: string; adjacencies: DvarJsonAdjacency[]; }
+interface DvarJsonProvince { id: string; name: string; type: string; supplyCenter: boolean; adjacencies: DvarJsonAdjacency[]; homeNation?: string; }
+interface DvarJsonUnit { nation: string; type: string; location: string; }
+interface DvarJsonSupplyCenter { nation: string; province: string; }
+interface DvarJsonPhaseTransition { from: { season: string; type: string }; to: { season: string; type: string; yearDelta: number }; }
+interface DvarJsonDomRule { province: string; nation: string; priority: number; dependencies: Array<{ province: string; nation: string }>; }
+
+interface DvarJson {
+  id?: string;
+  name?: string;
+  description?: string;
+  author?: string;
+  rules?: string;
+  nations?: DvarJsonNation[];
+  provinces?: DvarJsonProvince[];
+  namedCoasts?: DvarJsonNamedCoast[];
+  initialState?: {
+    phase?: { year?: number; season?: string; type?: string };
+    supplyCenters?: DvarJsonSupplyCenter[];
+    units?: DvarJsonUnit[];
+  };
+  phaseProgression?: { seasons?: string[]; transitions?: DvarJsonPhaseTransition[]; };
+  victoryConditions?: VictoryCondition[];
+  dominanceRules?: DvarJsonDomRule[];
+}
+
 const DEFAULT_COLORS = [
   "#2196F3",
   "#00BCD4",
@@ -294,6 +324,10 @@ export function DvarCreator() {
   const [victoryConditionsData, setVictoryConditionsData] = useState<VictoryConditionsData | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dvarInputRef = useRef<HTMLInputElement>(null);
+  const [pendingDvar, setPendingDvar] = useState<DvarJson | null>(null);
+  const [pendingDvarFileName, setPendingDvarFileName] = useState<string | null>(null);
+  const [dvarError, setDvarError] = useState<string | null>(null);
   const homeNationsRef = useRef<HomeNationsFormHandle>(null);
   const adjacenciesRef = useRef<AdjacenciesFormHandle>(null);
   const namedCoastAdjacenciesRef = useRef<NamedCoastAdjacenciesFormHandle>(null);
@@ -303,6 +337,118 @@ export function DvarCreator() {
   const basicInfoFormId = useId();
   const nationsFormId = useId();
   const provincesFormId = useId();
+
+  const processDvarFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".dvar")) {
+      setDvarError("Please upload a .dvar file.");
+      return;
+    }
+    try {
+      const content = await file.text();
+      const parsed = JSON.parse(content) as DvarJson;
+      setPendingDvar(parsed);
+      setPendingDvarFileName(file.name);
+      setDvarError(null);
+    } catch {
+      setDvarError("Invalid .dvar file — could not parse JSON.");
+    }
+  };
+
+  const applyDvarPreFill = (dvar: DvarJson, parsed: ParsedDsvg) => {
+    // basic info
+    setBasicInfo({
+      id: dvar.id ?? "",
+      name: dvar.name ?? "",
+      description: dvar.description ?? "",
+      author: dvar.author ?? "",
+      startYear: dvar.initialState?.phase?.year ?? 1901,
+      rules: dvar.rules ?? "",
+    });
+
+    // nations
+    const nationsRaw = dvar.nations ?? [];
+    setNations(nationsRaw);
+
+    // provinces + namedCoasts
+    const namedCoastsRaw = dvar.namedCoasts ?? [];
+    const coastsByParent = new Map<string, Array<{ id: string; name: string }>>();
+    for (const coast of namedCoastsRaw) {
+      const existing = coastsByParent.get(coast.parentProvince) ?? [];
+      coastsByParent.set(coast.parentProvince, [...existing, { id: coast.id, name: coast.name }]);
+    }
+    const provincesRaw = dvar.provinces ?? [];
+    const provinces = provincesRaw.map(p => ({
+      id: p.id,
+      name: p.name,
+      type: p.type as "land" | "sea" | "coastal",
+      supplyCenter: p.supplyCenter,
+      namedCoasts: coastsByParent.get(p.id) ?? [],
+    }));
+    setProvincesData({ provinces });
+
+    // adjacencies
+    const adjacencyMap: DvarAdjacencyMap = {};
+    for (const p of provincesRaw) {
+      adjacencyMap[p.id] = p.adjacencies.map(a => ({ to: a.to, pass: a.pass as PassType }));
+    }
+    setAdjacenciesData(adjacencyMap);
+
+    // named coast adjacencies
+    if (namedCoastsRaw.length > 0 || parsed.namedCoastIds.length > 0) {
+      const namedCoastAdj: Record<string, DvarAdjacency[]> = {};
+      for (const coast of namedCoastsRaw) {
+        namedCoastAdj[coast.id] = coast.adjacencies.map(a => ({ to: a.to, pass: a.pass as PassType }));
+      }
+      setNamedCoastAdjacenciesData(namedCoastAdj);
+    }
+
+    // home nations
+    const scNationMap = Object.fromEntries((dvar.initialState?.supplyCenters ?? []).map(sc => [sc.province, sc.nation]));
+    const unitByProvince = new Map<string, DvarJsonUnit>();
+    for (const unit of dvar.initialState?.units ?? []) {
+      const provinceId = unit.location.includes("/") ? unit.location.split("/")[0] : unit.location;
+      unitByProvince.set(provinceId, unit);
+    }
+    const homeNations: HomeNationsData = {};
+    for (const p of provinces) {
+      if (!p.supplyCenter) continue;
+      const unit = unitByProvince.get(p.id);
+      homeNations[p.id] = {
+        nation: scNationMap[p.id] ?? "",
+        startingUnit: unit ? (unit.type === "Army" ? "army" : "fleet") : null,
+        startingCoast: unit && unit.location.includes("/") ? unit.location : null,
+      };
+    }
+    setHomeNationsData(homeNations);
+
+    // dominance rules: start from the auto-detected structure, then overlay enabled rules
+    const baseDR = buildInitialDominanceRules(adjacencyMap, provinces);
+    for (const rule of dvar.dominanceRules ?? []) {
+      if (!baseDR[rule.province]) {
+        baseDR[rule.province] = { enabled: true, provinceOccupier: rule.nation, conditions: {} };
+      } else {
+        baseDR[rule.province].enabled = true;
+        baseDR[rule.province].provinceOccupier = rule.nation === "Neutral" ? "neutral" : rule.nation;
+      }
+      for (const dep of rule.dependencies) {
+        baseDR[rule.province].conditions[dep.province] = dep.nation === "Neutral" ? "neutral" : dep.nation;
+      }
+    }
+    setDominanceRulesData(baseDR);
+
+    // phase progression: each entry[i] = { from.season, from.type, to.yearDelta }
+    const transitions = dvar.phaseProgression?.transitions ?? [];
+    const phaseEntries: PhaseProgressionData = transitions.map(t => ({
+      season: t.from.season,
+      type: t.from.type as PhaseType,
+      yearDelta: t.to.yearDelta,
+    }));
+    setPhaseProgressionData(phaseEntries.length > 0 ? phaseEntries : [...DEFAULT_PHASE_ENTRIES]);
+
+    // victory conditions
+    const vc = dvar.victoryConditions ?? [];
+    setVictoryConditionsData(vc.length > 0 ? vc : [...DEFAULT_VICTORY_CONDITIONS]);
+  };
 
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".d.svg")) {
@@ -322,7 +468,9 @@ export function DvarCreator() {
     setError(null);
     setFileName(file.name);
     setSvgContent(content);
-    setParsedDsvgState(parseDsvg(content));
+    const parsed = parseDsvg(content);
+    setParsedDsvgState(parsed);
+    if (pendingDvar) applyDvarPreFill(pendingDvar, parsed);
     setStep("basic-info");
   };
 
@@ -354,6 +502,10 @@ export function DvarCreator() {
     setPhaseProgressionData(null);
     setVictoryConditionsData(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    setPendingDvar(null);
+    setPendingDvarFileName(null);
+    setDvarError(null);
+    if (dvarInputRef.current) dvarInputRef.current.value = "";
   };
 
   const handleBack = () => {
@@ -464,44 +616,87 @@ export function DvarCreator() {
               </p>
             </div>
 
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => fileInputRef.current?.click()}
-              onKeyDown={e => {
-                if (e.key === "Enter" || e.key === " ")
-                  fileInputRef.current?.click();
-              }}
-              onDrop={handleDrop}
-              onDragOver={e => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={e => {
-                e.preventDefault();
-                setIsDragging(false);
-              }}
-              className={cn(
-                "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-12 transition-colors",
-                isDragging
-                  ? "border-primary bg-primary/5"
-                  : "border-muted-foreground/25 hover:border-muted-foreground/50"
-              )}
-            >
-              <Upload className="h-10 w-10 text-muted-foreground" />
-              <p className="text-center text-muted-foreground">
-                Drop a{" "}
-                <span className="font-mono font-medium">.d.svg</span> file here
-                or click to upload
-              </p>
-            </div>
-
-            {error && (
-              <div className="flex items-center gap-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                {error}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Required: dSVG */}
+              <div className="flex flex-col gap-2">
+                <Label className="text-sm font-medium">
+                  dSVG Map <span className="text-destructive">*</span>
+                </Label>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => fileInputRef.current?.click()}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ")
+                      fileInputRef.current?.click();
+                  }}
+                  onDrop={handleDrop}
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={e => { e.preventDefault(); setIsDragging(false); }}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-12 transition-colors",
+                    isDragging
+                      ? "border-primary bg-primary/5"
+                      : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                  )}
+                >
+                  <Upload className="h-10 w-10 text-muted-foreground" />
+                  <p className="text-center text-sm text-muted-foreground">
+                    Drop a <span className="font-mono font-medium">.d.svg</span> file here or click to upload
+                  </p>
+                </div>
+                {error && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Optional: dVAR pre-fill */}
+              <div className="flex flex-col gap-2">
+                <Label className="text-sm font-medium">
+                  Existing dVAR{" "}
+                  <span className="text-xs font-normal text-muted-foreground">(optional — pre-fills all settings)</span>
+                </Label>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => dvarInputRef.current?.click()}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ")
+                      dvarInputRef.current?.click();
+                  }}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-12 transition-colors",
+                    pendingDvar
+                      ? "border-primary bg-primary/5"
+                      : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                  )}
+                >
+                  {pendingDvar ? (
+                    <>
+                      <Download className="h-10 w-10 text-primary" />
+                      <p className="text-center text-sm font-medium">{pendingDvarFileName}</p>
+                      <p className="text-center text-xs text-muted-foreground">Upload your dSVG to continue</p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-10 w-10 text-muted-foreground" />
+                      <p className="text-center text-sm text-muted-foreground">
+                        Drop a <span className="font-mono font-medium">.dvar</span> file here or click to upload
+                      </p>
+                    </>
+                  )}
+                </div>
+                {dvarError && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {dvarError}
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         ) : (
           <>
@@ -701,6 +896,14 @@ export function DvarCreator() {
           onChange={handleFileSelect}
           className="hidden"
           aria-label="Upload dSVG file"
+        />
+        <input
+          ref={dvarInputRef}
+          type="file"
+          accept=".dvar"
+          onChange={e => { const f = e.target.files?.[0]; if (f) processDvarFile(f); }}
+          className="hidden"
+          aria-label="Upload dVAR file"
         />
       </div>
     </div>
