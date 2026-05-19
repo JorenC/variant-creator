@@ -15,11 +15,11 @@ export function HomePage() {
         </div>
 
         <div className="flex w-full flex-col gap-4">
-          <Button size="lg" className="w-full" onClick={() => navigate("/variant-creator")}>
-            Variant Creator
-          </Button>
-          <Button size="lg" variant="outline" className="w-full" onClick={() => navigate("/dsvg-creator")}>
+          <Button size="lg" className="w-full" onClick={() => navigate("/dsvg-creator")}>
             dSVG Creator
+          </Button>
+          <Button size="lg" variant="outline" className="w-full" onClick={() => navigate("/dvar-creator")}>
+            dVAR Creator
           </Button>
         </div>
       </div>
