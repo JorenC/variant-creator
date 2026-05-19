@@ -51,6 +51,28 @@ export function validateSvg(svgString: string): SvgValidationResult {
     };
   }
 
+  const provincesLayer = findLayerByName(doc, "provinces");
+  if (!provincesLayer) {
+    return {
+      valid: false,
+      error: {
+        code: "MISSING_PROVINCES_LAYER",
+        message: "SVG must contain a layer named 'provinces'",
+      },
+    };
+  }
+
+  const hasPaths = provincesLayer.querySelector("path") !== null;
+  if (!hasPaths) {
+    return {
+      valid: false,
+      error: {
+        code: "EMPTY_PROVINCES_LAYER",
+        message: "Provinces layer must contain at least one path element",
+      },
+    };
+  }
+
   return { valid: true };
 }
 

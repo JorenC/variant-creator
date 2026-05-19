@@ -37,6 +37,9 @@ const createValidSvgFile = (provinceCount: number = 2) => {
       <g id="provinces">
         ${paths}
       </g>
+      <g id="text">
+        <text x="10" y="20">Label</text>
+      </g>
     </svg>
   `;
 

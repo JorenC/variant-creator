@@ -202,14 +202,14 @@ describe("PhaseTextAssoc", () => {
     it("shows empty state message", () => {
       renderWithRouter();
       expect(
-        screen.getByText(/No text elements found in the SVG/)
+        screen.getByText(/No text elements were loaded from the SVG/)
       ).toBeInTheDocument();
     });
 
     it("indicates user can proceed to next phase", () => {
       renderWithRouter();
       expect(
-        screen.getByText(/You can proceed to the next phase/)
+        screen.getByText(/Province labels can be generated automatically in a later phase/)
       ).toBeInTheDocument();
     });
   });
