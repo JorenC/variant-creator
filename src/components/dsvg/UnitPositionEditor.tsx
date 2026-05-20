@@ -24,12 +24,16 @@ interface UnitPositionEditorProps {
   provinceAbbrs: Record<string, string>;
 }
 
+// Accepts "stp" (province) or "stp/sc" (named coast)
+const CODE_PATTERN = /^[a-zA-Z]{3}(\/[a-zA-Z]{2})?$/;
+const CODE_ERROR = 'Must be 3 letters, or "xxx/xx" for a named coast (e.g. stp/sc).';
+
 function validateCode(
   svgId: string,
   value: string,
   codes: Record<string, string>
 ): string | null {
-  if (!value || !/^[a-zA-Z]+$/.test(value)) return "Only letters are allowed.";
+  if (!value || !CODE_PATTERN.test(value)) return CODE_ERROR;
   const duplicate = Object.entries(codes).some(
     ([id, code]) => id !== svgId && code.toLowerCase() === value.toLowerCase()
   );
@@ -87,12 +91,12 @@ export const UnitPositionEditor = forwardRef<
     () => ({
       validate() {
         const invalid = elements.filter(
-          el => !/^[a-zA-Z]{3}$/.test(codes[el.svgId] ?? "")
+          el => !CODE_PATTERN.test(codes[el.svgId] ?? "")
         );
         if (invalid.length > 0) {
           const newErrors: Record<string, string> = {};
           invalid.forEach(el => {
-            newErrors[el.svgId] = "Must be exactly 3 letters.";
+            newErrors[el.svgId] = CODE_ERROR;
           });
           setErrors(prev => ({ ...prev, ...newErrors }));
           requestAnimationFrame(() => {
@@ -190,7 +194,7 @@ export const UnitPositionEditor = forwardRef<
                     inputRefs.current[svgId] = el;
                   }}
                   value={codes[svgId] ?? ""}
-                  maxLength={3}
+                  maxLength={6}
                   aria-invalid={!!error}
                   onChange={e => handleCodeChange(svgId, e.target.value)}
                   onFocus={() => handleFocus(svgId)}
