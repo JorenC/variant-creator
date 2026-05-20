@@ -1244,10 +1244,10 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
                       control={control}
                       name={`provinces.${i}.type`}
                       render={({ field }) => (
-                        <label className="flex cursor-pointer items-center">
+                        <label className="relative flex cursor-pointer items-center">
                           <input
                             type="radio"
-                            className="sr-only"
+                            className="absolute opacity-0 w-0 h-0"
                             value={t}
                             checked={field.value === t}
                             onChange={() => field.onChange(t)}
