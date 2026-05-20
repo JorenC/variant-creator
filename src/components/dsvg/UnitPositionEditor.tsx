@@ -197,9 +197,6 @@ export const UnitPositionEditor = forwardRef<
                   onBlur={() => handleBlur(svgId)}
                   className="h-7 font-mono text-sm"
                 />
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  -position
-                </span>
               </div>
               {error && (
                 <div className="flex items-center gap-1 pl-[7.5rem] text-xs text-destructive">

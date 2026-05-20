@@ -24,8 +24,13 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
   // Split displayNodes into background/foreground based on position relative to provinces
   const { backgroundItems, foregroundItems } = useMemo(() => {
     const assignedKeySet = new Set(
-      [assignments.provinces, assignments.namedCoasts, assignments.unitPositions]
-        .filter((k): k is string => k !== null)
+      [
+        assignments.provinces,
+        assignments.namedCoasts,
+        assignments.unitPositions,
+        assignments.provinceNames,
+        assignments.borders,
+      ].filter((k): k is string => k !== null)
     );
     const provincesIdx = assignments.provinces
       ? displayNodes.findIndex(n => n.key === assignments.provinces)
@@ -111,6 +116,8 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
       { label: "provinces", key: assignments.provinces },
       { label: "named-coasts", key: assignments.namedCoasts },
       { label: "unit-positions", key: assignments.unitPositions },
+      { label: "province-names", key: assignments.provinceNames },
+      { label: "borders", key: assignments.borders },
     ] as { label: string; key: string | null }[]
   ).filter((l): l is { label: string; key: string } => l.key !== null);
 

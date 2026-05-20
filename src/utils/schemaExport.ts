@@ -1,19 +1,6 @@
-import type { VariantDefinition, Province, NamedCoast, DecorativeElement } from "@/types/variant";
+import type { VariantDefinition, Province, NamedCoast } from "@/types/variant";
 
 type PhaseType = "Movement" | "Retreat" | "Adjustment";
-
-interface SchemaPosition {
-  x: number;
-  y: number;
-}
-
-interface SchemaLabel {
-  text: string;
-  position: SchemaPosition;
-  rotation?: number;
-  source: "svg" | "generated";
-  style?: Record<string, unknown>;
-}
 
 interface SchemaAdjacency {
   to: string;
@@ -27,11 +14,6 @@ interface SchemaProvince {
   supplyCenter: boolean;
   homeNation?: string;
   adjacencies: SchemaAdjacency[];
-  path: string;
-  labels: SchemaLabel[];
-  unitPosition: SchemaPosition;
-  dislodgedUnitPosition: SchemaPosition;
-  supplyCenterPosition?: SchemaPosition;
 }
 
 interface SchemaNamedCoast {
@@ -39,9 +21,6 @@ interface SchemaNamedCoast {
   name: string;
   parentProvince: string;
   adjacencies: SchemaAdjacency[];
-  path: string;
-  unitPosition: SchemaPosition;
-  dislodgedUnitPosition: SchemaPosition;
 }
 
 interface SchemaNation {
@@ -77,17 +56,10 @@ interface SchemaInitialState {
   supplyCenters: SchemaSupplyCenter[];
 }
 
-type SchemaDecorativeElement =
-  | { kind: "path"; d: string; fill?: string; stroke?: string; strokeWidth?: number }
-  | { kind: "text"; text: string; position: SchemaPosition; rotation?: number; style?: Record<string, unknown> }
-  | { kind: "group"; id?: string; children: SchemaDecorativeElement[] };
-
-interface SchemaTextElement {
-  text: string;
-  position: SchemaPosition;
-  rotation?: number;
-  style?: Record<string, unknown>;
-}
+type SchemaVictoryCondition =
+  | { type: "supply-center-majority"; supplyCenters: number }
+  | { type: "timed-resolution"; year: number; resolution: "most-supply-centers" | "shared-draw" }
+  | { type: "province-control"; provinces: string[]; year?: number };
 
 export interface SchemaVariant {
   schemaVersion: 1;
@@ -95,15 +67,12 @@ export interface SchemaVariant {
   name: string;
   description: string;
   author: string;
-  soloVictorySupplyCenters: number;
+  victoryConditions: SchemaVictoryCondition[];
   phaseProgression: SchemaPhaseProgression;
   nations: SchemaNation[];
   provinces: SchemaProvince[];
   namedCoasts: SchemaNamedCoast[];
   initialState: SchemaInitialState;
-  dimensions: { width: number; height: number };
-  decorativeElements: SchemaDecorativeElement[];
-  textElements?: SchemaTextElement[];
 }
 
 const DEFAULT_PHASE_PROGRESSION: SchemaPhaseProgression = {
@@ -145,23 +114,6 @@ function convertAdjacencies(province: Province, allProvinces: Province[]): Schem
   });
 }
 
-function convertNamedCoastAdjacencies(namedCoast: NamedCoast): SchemaAdjacency[] {
-  return namedCoast.adjacencies.map((toId) => ({ to: toId, pass: "fleet" as const }));
-}
-
-function convertLabels(province: Province): SchemaLabel[] {
-  return province.labels.map((label) => {
-    const result: SchemaLabel = {
-      text: label.text,
-      position: label.position,
-      source: label.source,
-    };
-    if (label.rotation !== undefined) result.rotation = label.rotation;
-    if (label.styles) result.style = { ...label.styles };
-    return result;
-  });
-}
-
 function convertProvince(province: Province, allProvinces: Province[]): SchemaProvince {
   const schemaType: "land" | "sea" | "coastal" =
     province.type === "namedCoasts" ? "land" : province.type;
@@ -172,16 +124,9 @@ function convertProvince(province: Province, allProvinces: Province[]): SchemaPr
     type: schemaType,
     supplyCenter: province.supplyCenter,
     adjacencies: convertAdjacencies(province, allProvinces),
-    path: province.path,
-    labels: convertLabels(province),
-    unitPosition: province.unitPosition,
-    dislodgedUnitPosition: province.dislodgedUnitPosition,
   };
 
   if (province.homeNation !== null) result.homeNation = province.homeNation;
-  if (province.supplyCenter && province.supplyCenterPosition) {
-    result.supplyCenterPosition = province.supplyCenterPosition;
-  }
 
   return result;
 }
@@ -191,52 +136,7 @@ function convertNamedCoast(namedCoast: NamedCoast): SchemaNamedCoast {
     id: namedCoast.id,
     name: namedCoast.name,
     parentProvince: namedCoast.parentId,
-    adjacencies: convertNamedCoastAdjacencies(namedCoast),
-    path: namedCoast.path,
-    unitPosition: namedCoast.unitPosition,
-    dislodgedUnitPosition: namedCoast.dislodgedUnitPosition,
-  };
-}
-
-function extractDecorativeChildren(element: Element): SchemaDecorativeElement[] {
-  const result: SchemaDecorativeElement[] = [];
-  Array.from(element.children).forEach((child) => {
-    const tag = child.tagName.toLowerCase();
-    if (tag === "path") {
-      const d = child.getAttribute("d");
-      if (!d) return;
-      const fill = child.getAttribute("fill") ?? undefined;
-      const stroke = child.getAttribute("stroke") ?? undefined;
-      const strokeWidthStr = child.getAttribute("stroke-width");
-      const strokeWidth = strokeWidthStr !== null ? parseFloat(strokeWidthStr) : undefined;
-      result.push({ kind: "path", d, fill, stroke, strokeWidth });
-    } else if (tag === "g") {
-      result.push({
-        kind: "group",
-        id: child.getAttribute("id") ?? undefined,
-        children: extractDecorativeChildren(child),
-      });
-    } else if (tag === "text") {
-      const x = parseFloat(child.getAttribute("x") ?? "0");
-      const y = parseFloat(child.getAttribute("y") ?? "0");
-      result.push({ kind: "text", text: child.textContent ?? "", position: { x, y } });
-    }
-  });
-  return result;
-}
-
-function convertDecorativeElement(element: DecorativeElement): SchemaDecorativeElement {
-  const contentChildren: SchemaDecorativeElement[] = [];
-  if (element.content) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<svg>${element.content}</svg>`, "image/svg+xml");
-    contentChildren.push(...extractDecorativeChildren(doc.documentElement));
-  }
-  const subgroupChildren = (element.children ?? []).map(convertDecorativeElement);
-  return {
-    kind: "group",
-    id: element.id,
-    children: [...contentChildren, ...subgroupChildren],
+    adjacencies: namedCoast.adjacencies.map((toId) => ({ to: toId, pass: "fleet" as const })),
   };
 }
 
@@ -266,12 +166,6 @@ function buildInitialState(variant: VariantDefinition): SchemaInitialState {
 
 export function toSchemaVariant(variant: VariantDefinition): SchemaVariant {
   const id = toKebabId(variant.name) || "my-variant";
-  const textElements = variant.textElements.map((t) => ({
-    text: t.content,
-    position: { x: t.x, y: t.y },
-    ...(t.rotation !== undefined ? { rotation: t.rotation } : {}),
-    ...(t.styles ? { style: { ...t.styles } } : {}),
-  }));
 
   return {
     schemaVersion: 1,
@@ -279,15 +173,12 @@ export function toSchemaVariant(variant: VariantDefinition): SchemaVariant {
     name: variant.name,
     description: variant.description,
     author: variant.author,
-    soloVictorySupplyCenters: variant.soloVictorySCCount,
+    victoryConditions: [{ type: "supply-center-majority", supplyCenters: variant.soloVictorySCCount }],
     phaseProgression: DEFAULT_PHASE_PROGRESSION,
     nations: variant.nations.map((n) => ({ id: n.id, name: n.name, color: n.color })),
     provinces: variant.provinces.map((p) => convertProvince(p, variant.provinces)),
     namedCoasts: variant.namedCoasts.map(convertNamedCoast),
     initialState: buildInitialState(variant),
-    dimensions: variant.dimensions,
-    decorativeElements: variant.decorativeElements.map(convertDecorativeElement),
-    ...(textElements.length > 0 ? { textElements } : {}),
   };
 }
 

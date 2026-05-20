@@ -20,6 +20,8 @@ const DEFAULT_ASSIGNMENTS: LayerAssignments = {
   provinces: null,
   namedCoasts: null,
   unitPositions: null,
+  provinceNames: null,
+  borders: null,
 };
 
 const STEP_TITLES: Record<Exclude<Step, "upload">, string> = {

@@ -14,6 +14,8 @@ export interface LayerAssignments {
   provinces: string | null;
   namedCoasts: string | null;
   unitPositions: string | null;
+  provinceNames: string | null;
+  borders: string | null;
 }
 
 const LAYER_FIELDS: {
@@ -37,7 +39,19 @@ const LAYER_FIELDS: {
     key: "unitPositions",
     label: "Unit Positions",
     description:
-      "Reference markers for where units are placed on the map. Each element should have an ID matching a province abbreviation.",
+      "Reference markers for where units are placed on the map. Each circle should have an ID matching a province abbreviation. Optional.",
+  },
+  {
+    key: "provinceNames",
+    label: "Province Names",
+    description:
+      "Text labels for provinces. Rendered above province fills and supply-center markers. Optional.",
+  },
+  {
+    key: "borders",
+    label: "Borders",
+    description:
+      "Province border lines. Rendered above province names. Optional.",
   },
 ];
 
@@ -65,7 +79,7 @@ export function LayerAssignment({
       <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
         <p className="mb-3 font-medium text-foreground">How layers work</p>
         <p className="mb-2">
-          The output SVG uses five fixed layers in order:
+          The output SVG uses seven fixed layers in order:
         </p>
         <ol className="mb-3 list-inside list-decimal space-y-1">
           <li>
@@ -75,15 +89,23 @@ export function LayerAssignment({
           </li>
           <li>
             <span className="font-medium text-foreground">provinces</span> —
-            Province shapes.
+            Province shapes (hidden at runtime).
           </li>
           <li>
             <span className="font-medium text-foreground">named-coasts</span> —
-            Shapes for named coastal sub-regions.
+            Shapes for named coastal sub-regions (hidden at runtime).
           </li>
           <li>
             <span className="font-medium text-foreground">unit-positions</span>{" "}
-            — Reference markers for unit placement.
+            — Reference markers for unit placement (hidden at runtime).
+          </li>
+          <li>
+            <span className="font-medium text-foreground">province-names</span>{" "}
+            — Text labels for provinces.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">borders</span> —
+            Province border lines.
           </li>
           <li>
             <span className="font-medium text-foreground">foreground</span> —
