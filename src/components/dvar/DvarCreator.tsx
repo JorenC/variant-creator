@@ -1386,10 +1386,31 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
   ({ svgContent, scProvinces, nations, defaultValues, onSubmit }, ref) => {
     const [assignment, setAssignment] = useState<HomeNationsData>(defaultValues);
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
+
+    const coastErrors = useMemo((): Set<string> => {
+      if (!submitAttempted) return new Set();
+      const errors = new Set<string>();
+      for (const province of scProvinces) {
+        const entry = assignment[province.id];
+        if (entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast) {
+          errors.add(province.id);
+        }
+      }
+      return errors;
+    }, [submitAttempted, scProvinces, assignment]);
 
     useImperativeHandle(ref, () => ({
-      submit: () => onSubmit(assignment),
-    }));
+      submit: () => {
+        setSubmitAttempted(true);
+        const hasErrors = scProvinces.some(province => {
+          const entry = assignment[province.id];
+          return entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast;
+        });
+        if (hasErrors) return;
+        onSubmit(assignment);
+      },
+    }), [assignment, onSubmit, scProvinces]);
 
     const provinceColors = useMemo(() => {
       const nationColorMap: Record<string, string> = {};
@@ -1442,7 +1463,14 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
     }
 
     return (
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <div className="space-y-4">
+        {coastErrors.size > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Some fleets require a coast selection. Please select a coast for each fleet marked below.
+          </div>
+        )}
+        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
           {scProvinces.map(province => {
             const entry = assignment[province.id] ?? { nation: "", startingUnit: null };
@@ -1527,7 +1555,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
                         }))
                       }
                     >
-                      <SelectTrigger size="sm" className="h-6 w-auto text-xs">
+                      <SelectTrigger size="sm" className={cn("h-6 w-auto text-xs", coastErrors.has(province.id) && "border-destructive")}>
                         <SelectValue placeholder="Coast…" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1540,6 +1568,9 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
                     </Select>
                   )}
                 </div>
+                {coastErrors.has(province.id) && (
+                  <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">Select a coast for this fleet.</p>
+                )}
               </div>
             );
           })}
@@ -1558,6 +1589,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
               />
             )}
           </div>
+        </div>
         </div>
       </div>
     );
