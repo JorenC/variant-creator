@@ -83,7 +83,7 @@ export function buildHomeNationPreviewSvg(
 export function buildProvincePreviewSvg(
   svgContent: string,
   highlightedProvinceId: string | null,
-  typeColorMap?: Record<string, string>
+  typeColors?: Record<string, string>
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -97,12 +97,10 @@ export function buildProvincePreviewSvg(
       if (el.id === highlightedProvinceId) {
         el.setAttribute("style", "fill:#fde047;opacity:1");
       } else {
-        const typeColor = typeColorMap?.[el.id];
+        const typeColor = typeColors?.[el.id];
         el.setAttribute(
           "style",
-          typeColor
-            ? `fill:${typeColor};opacity:0.7`
-            : "fill:#e2e8f0;opacity:0.5"
+          typeColor ? `fill:${typeColor};opacity:0.6` : "fill:#e2e8f0;opacity:0.5"
         );
       }
     }
