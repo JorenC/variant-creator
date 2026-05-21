@@ -153,7 +153,7 @@ const namedCoastEntrySchema = z.object({
 const provinceEntrySchema = z.object({
   id: z.string(),
   name: z.string().min(1, "Name is required"),
-  type: z.enum(["land", "sea", "coastal"]),
+  type: z.enum(["land", "sea", "coastal"], { error: "Province type is required" }),
   supplyCenter: z.boolean(),
   namedCoasts: z.array(namedCoastEntrySchema),
 });
@@ -206,7 +206,8 @@ function buildInitialProvinces(dsvg: ParsedDsvg): ProvincesFormValues["provinces
   return dsvg.provinceIds.map(id => ({
     id,
     name: id,
-    type: "land" as const,
+    // intentionally unselected — user must choose; Zod rejects "" on submit
+    type: "" as "land" | "sea" | "coastal",
     supplyCenter: false,
     namedCoasts: (coastsByParent.get(id) ?? []).map(coastId => ({
       id: coastId,
@@ -792,6 +793,13 @@ export function DvarCreator() {
                       )
                     : {}
                 }
+                provinceTypes={
+                  provincesData
+                    ? Object.fromEntries(
+                        provincesData.provinces.map(p => [p.id, p.type])
+                      )
+                    : {}
+                }
                 defaultValues={adjacenciesData}
                 onSubmit={handleAdjacenciesSubmit}
               />
@@ -1154,6 +1162,12 @@ interface ProvincesFormProps {
   onSubmit: (values: ProvincesFormValues) => void;
 }
 
+const PROVINCE_TYPE_COLORS: Record<string, string> = {
+  land: "#3b82f6",
+  coastal: "#22c55e",
+  sea: "#fde047",
+};
+
 function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: ProvincesFormProps) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1162,15 +1176,27 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
     register,
     control,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<ProvincesFormValues>({
     resolver: zodResolver(provincesFormSchema),
     defaultValues,
   });
 
+  const watchedProvinces = watch("provinces");
+
+  const typeColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of watchedProvinces) {
+      const color = p.type ? PROVINCE_TYPE_COLORS[p.type] : undefined;
+      if (color) map[p.id] = color;
+    }
+    return map;
+  }, [watchedProvinces]);
+
   const previewSvg = useMemo(
-    () => buildProvincePreviewSvg(svgContent, highlightedId),
-    [svgContent, highlightedId]
+    () => buildProvincePreviewSvg(svgContent, highlightedId, typeColorMap),
+    [svgContent, highlightedId, typeColorMap]
   );
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -1206,7 +1232,7 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
     <form id={formId} onSubmit={handleSubmit(onSubmit)}>
       {hasErrors && (
         <p className="mb-4 text-sm text-destructive">
-          Please fill in names for all provinces and coasts before proceeding.
+          Please fill in all names and select a type (L/C/S) for every province before proceeding.
         </p>
       )}
 
@@ -1237,7 +1263,10 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
                   aria-invalid={!!errors.provinces?.[i]?.name}
                   className="h-7 text-sm"
                 />
-                <div className="flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1">
+                <div className={cn(
+                  "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1",
+                  errors.provinces?.[i]?.type && "border-destructive"
+                )}>
                   {(["land", "sea", "coastal"] as const).map(t => (
                     <Controller
                       key={t}
@@ -1657,6 +1686,16 @@ const NamedCoastAdjacenciesForm = forwardRef<
 
   return (
     <div className="space-y-4">
+      {/* Pass type guide */}
+      <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+        <p className="mb-1.5 font-medium">Pass type guide</p>
+        <ul className="space-y-0.5 text-muted-foreground">
+          <li><span className="font-mono font-medium text-foreground">both</span> — coastal ↔ coastal sharing a coastline</li>
+          <li><span className="font-mono font-medium text-foreground">fleet</span> — sea ↔ sea, or sea ↔ coastal</li>
+          <li><span className="font-mono font-medium text-foreground">army</span> — land ↔ land, or coastal ↔ coastal with no shared coast (land bridge)</li>
+        </ul>
+      </div>
+
       <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
         {basePreviewUrl && (
           <img src={basePreviewUrl} alt="Map" className="absolute inset-0 h-full w-full" />
@@ -1825,12 +1864,13 @@ interface AdjacenciesFormHandle {
 interface AdjacenciesFormProps {
   svgContent: string;
   provinceNames: Record<string, string>;
+  provinceTypes: Record<string, string>;
   defaultValues: DvarAdjacencyMap;
   onSubmit: (adjacencyMap: DvarAdjacencyMap) => void;
 }
 
 const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
-  ({ svgContent, provinceNames, defaultValues, onSubmit }, ref) => {
+  ({ svgContent, provinceNames, provinceTypes, defaultValues, onSubmit }, ref) => {
     const [adjacencyMap, setAdjacencyMap] = useState<DvarAdjacencyMap>(defaultValues);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -1876,6 +1916,14 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
       return count / 2;
     }, [adjacencyMap]);
 
+    const passBreakdown = useMemo(() => {
+      const counts = { fleet: 0, army: 0, both: 0 };
+      for (const adjs of Object.values(adjacencyMap)) {
+        for (const adj of adjs) counts[adj.pass]++;
+      }
+      return { fleet: counts.fleet / 2, army: counts.army / 2, both: counts.both / 2 };
+    }, [adjacencyMap]);
+
     const isolatedIds = useMemo(
       () => getIsolatedIds(allIds, adjacencyMap),
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1883,7 +1931,7 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
     );
 
     const handleAutoDetect = () => {
-      const detected = autoDetectDvarAdjacencies(shapes);
+      const detected = autoDetectDvarAdjacencies(shapes, provinceTypes);
       setAdjacencyMap(detected);
     };
 
@@ -1920,14 +1968,26 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={handleAutoDetect}>
+          <Button type="button" variant="outline" size="sm" onClick={handleAutoDetect}>
             <Wand2 className="h-4 w-4" />
             Auto-Detect
           </Button>
           <span className="text-sm text-muted-foreground">
-            {Math.round(totalAdjacencies)} connection
-            {totalAdjacencies !== 1 ? "s" : ""} defined
+            {Math.round(totalAdjacencies)} connection{totalAdjacencies !== 1 ? "s" : ""}
+            {totalAdjacencies > 0 && (
+              <> · {Math.round(passBreakdown.fleet)} fleet · {Math.round(passBreakdown.army)} army · {Math.round(passBreakdown.both)} both</>
+            )}
           </span>
+        </div>
+
+        {/* Pass type guide */}
+        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+          <p className="mb-1.5 font-medium">Pass type guide</p>
+          <ul className="space-y-0.5 text-muted-foreground">
+            <li><span className="font-mono font-medium text-foreground">both</span> — coastal ↔ coastal sharing a coastline</li>
+            <li><span className="font-mono font-medium text-foreground">fleet</span> — sea ↔ sea, or sea ↔ coastal</li>
+            <li><span className="font-mono font-medium text-foreground">army</span> — land ↔ land, or coastal ↔ coastal with no shared coast (land bridge)</li>
+          </ul>
         </div>
 
         {/* Map */}

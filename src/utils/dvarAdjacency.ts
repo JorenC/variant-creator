@@ -15,8 +15,15 @@ export function buildEmptyDvarAdjacencyMap(ids: string[]): DvarAdjacencyMap {
   return map;
 }
 
+function resolvePass(typeA: string, typeB: string): PassType {
+  if (typeA === "sea" || typeB === "sea") return "fleet";
+  if (typeA === "coastal" && typeB === "coastal") return "both";
+  return "army";
+}
+
 export function autoDetectDvarAdjacencies(
-  shapes: { id: string; paths: string[] }[]
+  shapes: { id: string; paths: string[] }[],
+  provinceTypes: Record<string, string> = {}
 ): DvarAdjacencyMap {
   const map = buildEmptyDvarAdjacencyMap(shapes.map(s => s.id));
 
@@ -36,8 +43,9 @@ export function autoDetectDvarAdjacencies(
       }
 
       if (intersects) {
-        map[a.id].push({ to: b.id, pass: "both" });
-        map[b.id].push({ to: a.id, pass: "both" });
+        const pass = resolvePass(provinceTypes[a.id] ?? "", provinceTypes[b.id] ?? "");
+        map[a.id].push({ to: b.id, pass });
+        map[b.id].push({ to: a.id, pass });
       }
     }
   }
