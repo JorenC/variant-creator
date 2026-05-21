@@ -63,7 +63,8 @@ export function buildHomeNationPreviewSvg(
 
 export function buildProvincePreviewSvg(
   svgContent: string,
-  highlightedProvinceId: string | null
+  highlightedProvinceId: string | null,
+  typeColorMap?: Record<string, string>
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -74,12 +75,17 @@ export function buildProvincePreviewSvg(
 
     for (const child of Array.from(provincesLayer.children)) {
       const el = child as SVGElement;
-      el.setAttribute(
-        "style",
-        el.id === highlightedProvinceId
-          ? "fill:#fde047;opacity:1"
-          : "fill:#e2e8f0;opacity:0.5"
-      );
+      if (el.id === highlightedProvinceId) {
+        el.setAttribute("style", "fill:#fde047;opacity:1");
+      } else {
+        const typeColor = typeColorMap?.[el.id];
+        el.setAttribute(
+          "style",
+          typeColor
+            ? `fill:${typeColor};opacity:0.7`
+            : "fill:#e2e8f0;opacity:0.5"
+        );
+      }
     }
   }
 
