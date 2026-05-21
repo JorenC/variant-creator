@@ -16,6 +16,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Map as MapIcon,
   Plus,
   Trash2,
@@ -40,21 +42,29 @@ import {
 } from "@/components/ui/select";
 import { NationColorPicker } from "@/components/common/NationColorPicker";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { validateDsvg, parseDsvg } from "@/utils/parseDsvg";
 import {
   buildProvincePreviewSvg,
   buildHomeNationPreviewSvg,
   extractDsvgProvinceShapes,
+  extractDsvgNamedCoastShapes,
 } from "@/utils/dvarPreview";
 import {
   buildEmptyDvarAdjacencyMap,
   autoDetectDvarAdjacencies,
   toggleDvarAdjacency,
   setDvarAdjacencyPass,
-  getIsolatedIds,
 } from "@/utils/dvarAdjacency";
 import type { ParsedDsvg } from "@/utils/parseDsvg";
-import type { DvarAdjacency, DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
+import type { DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
 
 type Step =
   | "upload"
@@ -63,10 +73,10 @@ type Step =
   | "provinces"
   | "home-nations"
   | "adjacencies"
-  | "named-coast-adjacencies"
   | "dominance-rules"
   | "phase-progression"
   | "victory-conditions"
+  | "adjudication-modifiers"
   | "export";
 
 type HomeNationsData = Record<string, { nation: string; startingUnit: "army" | "fleet" | null; startingCoast: string | null }>;
@@ -243,6 +253,7 @@ interface DvarJson {
   };
   phaseProgression?: { seasons?: string[]; transitions?: DvarJsonPhaseTransition[]; };
   victoryConditions?: VictoryCondition[];
+  adjudicationModifiers?: string[];
   dominanceRules?: DvarJsonDomRule[];
 }
 
@@ -285,10 +296,6 @@ const STEP_META: Record<Exclude<Step, "upload">, { title: string; subtitle: stri
     subtitle:
       "Define which provinces border each other and what unit types may cross each connection.",
   },
-  "named-coast-adjacencies": {
-    title: "Named Coast Adjacencies",
-    subtitle: "Define which provinces each named coast can reach by fleet.",
-  },
   "dominance-rules": {
     title: "Dominance Rules",
     subtitle: "Optionally define conditions under which a province is dominated, based on adjacent supply center control.",
@@ -300,6 +307,10 @@ const STEP_META: Record<Exclude<Step, "upload">, { title: string; subtitle: stri
   "victory-conditions": {
     title: "Victory Conditions",
     subtitle: "Define how the game can end. Add multiple conditions — the first to fire wins.",
+  },
+  "adjudication-modifiers": {
+    title: "Game Rules",
+    subtitle: "Configure adjudicator rule modifiers for this variant.",
   },
   export: {
     title: "Review & Export",
@@ -319,10 +330,10 @@ export function DvarCreator() {
   const [provincesData, setProvincesData] = useState<ProvincesFormValues | null>(null);
   const [homeNationsData, setHomeNationsData] = useState<HomeNationsData | null>(null);
   const [adjacenciesData, setAdjacenciesData] = useState<DvarAdjacencyMap | null>(null);
-  const [namedCoastAdjacenciesData, setNamedCoastAdjacenciesData] = useState<Record<string, DvarAdjacency[]> | null>(null);
   const [dominanceRulesData, setDominanceRulesData] = useState<DominanceRulesData | null>(null);
   const [phaseProgressionData, setPhaseProgressionData] = useState<PhaseProgressionData | null>(null);
   const [victoryConditionsData, setVictoryConditionsData] = useState<VictoryConditionsData | null>(null);
+  const [adjudicationModifiersData, setAdjudicationModifiersData] = useState<string[] | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dvarInputRef = useRef<HTMLInputElement>(null);
@@ -331,10 +342,10 @@ export function DvarCreator() {
   const [dvarError, setDvarError] = useState<string | null>(null);
   const homeNationsRef = useRef<HomeNationsFormHandle>(null);
   const adjacenciesRef = useRef<AdjacenciesFormHandle>(null);
-  const namedCoastAdjacenciesRef = useRef<NamedCoastAdjacenciesFormHandle>(null);
   const dominanceRulesRef = useRef<DominanceRulesFormHandle>(null);
   const phaseProgressionRef = useRef<PhaseProgressionFormHandle>(null);
   const victoryConditionsRef = useRef<VictoryConditionsFormHandle>(null);
+  const adjudicationModifiersRef = useRef<AdjudicationModifiersFormHandle>(null);
   const basicInfoFormId = useId();
   const nationsFormId = useId();
   const provincesFormId = useId();
@@ -355,7 +366,7 @@ export function DvarCreator() {
     }
   };
 
-  const applyDvarPreFill = (dvar: DvarJson, parsed: ParsedDsvg) => {
+  const applyDvarPreFill = (dvar: DvarJson) => {
     // basic info
     setBasicInfo({
       id: dvar.id ?? "",
@@ -387,21 +398,15 @@ export function DvarCreator() {
     }));
     setProvincesData({ provinces });
 
-    // adjacencies
+    // adjacencies (provinces + named coasts in one map)
     const adjacencyMap: DvarAdjacencyMap = {};
     for (const p of provincesRaw) {
       adjacencyMap[p.id] = p.adjacencies.map(a => ({ to: a.to, pass: a.pass as PassType }));
     }
-    setAdjacenciesData(adjacencyMap);
-
-    // named coast adjacencies
-    if (namedCoastsRaw.length > 0 || parsed.namedCoastIds.length > 0) {
-      const namedCoastAdj: Record<string, DvarAdjacency[]> = {};
-      for (const coast of namedCoastsRaw) {
-        namedCoastAdj[coast.id] = coast.adjacencies.map(a => ({ to: a.to, pass: a.pass as PassType }));
-      }
-      setNamedCoastAdjacenciesData(namedCoastAdj);
+    for (const coast of namedCoastsRaw) {
+      adjacencyMap[coast.id] = coast.adjacencies.map(a => ({ to: a.to, pass: "fleet" as PassType }));
     }
+    setAdjacenciesData(adjacencyMap);
 
     // home nations
     const scNationMap = Object.fromEntries((dvar.initialState?.supplyCenters ?? []).map(sc => [sc.province, sc.nation]));
@@ -449,6 +454,9 @@ export function DvarCreator() {
     // victory conditions
     const vc = dvar.victoryConditions ?? [];
     setVictoryConditionsData(vc.length > 0 ? vc : [...DEFAULT_VICTORY_CONDITIONS]);
+
+    // adjudication modifiers
+    setAdjudicationModifiersData(dvar.adjudicationModifiers ?? []);
   };
 
   const processFile = async (file: File) => {
@@ -471,7 +479,7 @@ export function DvarCreator() {
     setSvgContent(content);
     const parsed = parseDsvg(content);
     setParsedDsvgState(parsed);
-    if (pendingDvar) applyDvarPreFill(pendingDvar, parsed);
+    if (pendingDvar) applyDvarPreFill(pendingDvar);
     setStep("basic-info");
   };
 
@@ -498,7 +506,6 @@ export function DvarCreator() {
     setProvincesData(null);
     setHomeNationsData(null);
     setAdjacenciesData(null);
-    setNamedCoastAdjacenciesData(null);
     setDominanceRulesData(null);
     setPhaseProgressionData(null);
     setVictoryConditionsData(null);
@@ -515,14 +522,11 @@ export function DvarCreator() {
     if (step === "provinces") setStep("nations");
     if (step === "home-nations") setStep("provinces");
     if (step === "adjacencies") setStep("home-nations");
-    if (step === "named-coast-adjacencies") setStep("adjacencies");
-    if (step === "dominance-rules") {
-      const hasNamedCoasts = parsedDsvg && parsedDsvg.namedCoastIds.length > 0;
-      setStep(hasNamedCoasts ? "named-coast-adjacencies" : "adjacencies");
-    }
+    if (step === "dominance-rules") setStep("adjacencies");
     if (step === "phase-progression") setStep("dominance-rules");
     if (step === "victory-conditions") setStep("phase-progression");
-    if (step === "export") setStep("victory-conditions");
+    if (step === "adjudication-modifiers") setStep("victory-conditions");
+    if (step === "export") setStep("adjudication-modifiers");
   };
 
   const handleBasicInfoSubmit = (values: BasicInfoValues) => {
@@ -538,7 +542,10 @@ export function DvarCreator() {
   const handleProvincesSubmit = (values: ProvincesFormValues) => {
     setProvincesData(values);
     setAdjacenciesData(
-      prev => prev ?? buildEmptyDvarAdjacencyMap(values.provinces.map(p => p.id))
+      prev => prev ?? buildEmptyDvarAdjacencyMap([
+        ...values.provinces.map(p => p.id),
+        ...values.provinces.flatMap(p => p.namedCoasts.map(c => c.id)),
+      ])
     );
     setHomeNationsData(prev => {
       if (prev !== null) return prev;
@@ -558,26 +565,8 @@ export function DvarCreator() {
 
   const handleAdjacenciesSubmit = (data: DvarAdjacencyMap) => {
     setAdjacenciesData(data);
-    if (parsedDsvg && parsedDsvg.namedCoastIds.length > 0) {
-      setNamedCoastAdjacenciesData(prev => {
-        if (prev !== null) return prev;
-        const initial: Record<string, DvarAdjacency[]> = {};
-        for (const coastId of parsedDsvg.namedCoastIds) initial[coastId] = [];
-        return initial;
-      });
-      setStep("named-coast-adjacencies");
-    } else {
-      setDominanceRulesData(prev =>
-        prev ?? buildInitialDominanceRules(data, provincesData?.provinces ?? [])
-      );
-      setStep("dominance-rules");
-    }
-  };
-
-  const handleNamedCoastAdjacenciesSubmit = (data: Record<string, DvarAdjacency[]>) => {
-    setNamedCoastAdjacenciesData(data);
     setDominanceRulesData(prev =>
-      prev ?? buildInitialDominanceRules(adjacenciesData ?? {}, provincesData?.provinces ?? [])
+      prev ?? buildInitialDominanceRules(data, provincesData?.provinces ?? [])
     );
     setStep("dominance-rules");
   };
@@ -596,6 +585,12 @@ export function DvarCreator() {
 
   const handleVictoryConditionsSubmit = (data: VictoryConditionsData) => {
     setVictoryConditionsData(data);
+    setAdjudicationModifiersData(prev => prev ?? []);
+    setStep("adjudication-modifiers");
+  };
+
+  const handleAdjudicationModifiersSubmit = (data: string[]) => {
+    setAdjudicationModifiersData(data);
     setStep("export");
   };
 
@@ -767,30 +762,22 @@ export function DvarCreator() {
               />
             )}
 
-            {step === "named-coast-adjacencies" && svgContent && namedCoastAdjacenciesData && provincesData && (
-              <NamedCoastAdjacenciesForm
-                ref={namedCoastAdjacenciesRef}
-                svgContent={svgContent}
-                namedCoasts={provincesData.provinces.flatMap(p =>
-                  p.namedCoasts.map(c => ({ ...c, parentProvince: p.id }))
-                )}
-                provinceNames={Object.fromEntries(
-                  provincesData.provinces.map(p => [p.id, p.name])
-                )}
-                defaultValues={namedCoastAdjacenciesData}
-                onSubmit={handleNamedCoastAdjacenciesSubmit}
-              />
-            )}
-
             {step === "adjacencies" && svgContent && adjacenciesData && (
               <AdjacenciesForm
                 ref={adjacenciesRef}
                 svgContent={svgContent}
                 provinceNames={
                   provincesData
-                    ? Object.fromEntries(
-                        provincesData.provinces.map(p => [p.id, p.name])
-                      )
+                    ? {
+                        ...Object.fromEntries(
+                          provincesData.provinces.map(p => [p.id, p.name])
+                        ),
+                        ...Object.fromEntries(
+                          provincesData.provinces.flatMap(p =>
+                            p.namedCoasts.map(c => [c.id, c.name])
+                          )
+                        ),
+                      }
                     : {}
                 }
                 provinceTypes={
@@ -800,6 +787,16 @@ export function DvarCreator() {
                       )
                     : {}
                 }
+                namedCoastsByParent={Object.fromEntries(
+                  (provincesData?.provinces ?? [])
+                    .filter(p => p.namedCoasts.length > 0)
+                    .map(p => [p.id, p.namedCoasts.map(c => c.id)])
+                )}
+                coastNames={Object.fromEntries(
+                  (provincesData?.provinces ?? []).flatMap(p =>
+                    p.namedCoasts.map(c => [c.id, c.name])
+                  )
+                )}
                 defaultValues={adjacenciesData}
                 onSubmit={handleAdjacenciesSubmit}
               />
@@ -835,6 +832,14 @@ export function DvarCreator() {
               />
             )}
 
+            {step === "adjudication-modifiers" && adjudicationModifiersData !== null && (
+              <AdjudicationModifiersForm
+                ref={adjudicationModifiersRef}
+                defaultValues={adjudicationModifiersData}
+                onSubmit={handleAdjudicationModifiersSubmit}
+              />
+            )}
+
             {step === "export" && basicInfo && nations && provincesData && homeNationsData && adjacenciesData && dominanceRulesData && phaseProgressionData && victoryConditionsData && (
               <ExportStep
                 basicInfo={basicInfo}
@@ -842,10 +847,10 @@ export function DvarCreator() {
                 provincesData={provincesData}
                 homeNationsData={homeNationsData}
                 adjacenciesData={adjacenciesData}
-                namedCoastAdjacenciesData={namedCoastAdjacenciesData}
                 dominanceRulesData={dominanceRulesData}
                 phaseProgressionData={phaseProgressionData}
                 victoryConditionsData={victoryConditionsData}
+                adjudicationModifiersData={adjudicationModifiersData ?? []}
               />
             )}
 
@@ -866,11 +871,6 @@ export function DvarCreator() {
                     Next
                     <ChevronRight className="h-4 w-4" />
                   </Button>
-                ) : step === "named-coast-adjacencies" ? (
-                  <Button onClick={() => namedCoastAdjacenciesRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
                 ) : step === "dominance-rules" ? (
                   <Button onClick={() => dominanceRulesRef.current?.submit()}>
                     Next
@@ -883,6 +883,11 @@ export function DvarCreator() {
                   </Button>
                 ) : step === "victory-conditions" ? (
                   <Button onClick={() => victoryConditionsRef.current?.submit()}>
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : step === "adjudication-modifiers" ? (
+                  <Button onClick={() => adjudicationModifiersRef.current?.submit()}>
                     Next
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -1260,6 +1265,7 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
                 <Input
                   {...register(`provinces.${i}.name`)}
                   placeholder="Human name"
+                  autoComplete="off"
                   aria-invalid={!!errors.provinces?.[i]?.name}
                   className="h-7 text-sm"
                 />
@@ -1329,6 +1335,7 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
                       <Input
                         {...register(`provinces.${i}.namedCoasts.${j}.name`)}
                         placeholder="Human name"
+                        autoComplete="off"
                         aria-invalid={
                           !!errors.provinces?.[i]?.namedCoasts?.[j]?.name
                         }
@@ -1559,302 +1566,6 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
 
 HomeNationsForm.displayName = "HomeNationsForm";
 
-// ─── NamedCoastAdjacenciesForm ────────────────────────────────────────────────
-
-interface NamedCoastAdjacenciesFormHandle {
-  submit: () => void;
-}
-
-interface NamedCoastAdjacenciesFormProps {
-  svgContent: string;
-  namedCoasts: Array<{ id: string; name: string; parentProvince: string }>;
-  provinceNames: Record<string, string>;
-  defaultValues: Record<string, DvarAdjacency[]>;
-  onSubmit: (data: Record<string, DvarAdjacency[]>) => void;
-}
-
-const NamedCoastAdjacenciesForm = forwardRef<
-  NamedCoastAdjacenciesFormHandle,
-  NamedCoastAdjacenciesFormProps
->(({ svgContent, namedCoasts, provinceNames, defaultValues, onSubmit }, ref) => {
-  const [adjacencyMap, setAdjacencyMap] = useState<Record<string, DvarAdjacency[]>>(defaultValues);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
-
-  useImperativeHandle(ref, () => ({
-    submit: () => onSubmit(adjacencyMap),
-  }));
-
-  const { shapes, viewBox } = useMemo(
-    () => extractDsvgProvinceShapes(svgContent),
-    [svgContent]
-  );
-
-  const aspectRatio = useMemo(() => {
-    const parts = viewBox.split(/\s+/).map(Number);
-    return parts.length >= 4 && parts[2] > 0 && parts[3] > 0
-      ? `${parts[2]} / ${parts[3]}`
-      : "16 / 9";
-  }, [viewBox]);
-
-  const basePreviewSvg = useMemo(
-    () => buildProvincePreviewSvg(svgContent, null),
-    [svgContent]
-  );
-  const [basePreviewUrl, setBasePreviewUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const blob = new Blob([basePreviewSvg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    setBasePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [basePreviewSvg]);
-
-  const namedCoastParentIds = useMemo(
-    () => new Set(namedCoasts.map(c => c.parentProvince)),
-    [namedCoasts]
-  );
-
-  const selectedCoast = namedCoasts[selectedIndex] ?? null;
-  const currentAdjacencies = selectedCoast ? (adjacencyMap[selectedCoast.id] ?? []) : [];
-  const adjacentIds = currentAdjacencies.map(a => a.to);
-
-  const emptyCoasts = useMemo(
-    () => namedCoasts.filter(c => (adjacencyMap[c.id] ?? []).length === 0),
-    [namedCoasts, adjacencyMap]
-  );
-
-  const handleProvinceClick = (id: string) => {
-    if (!isEditMode) {
-      const coastsForProvince = namedCoasts
-        .map((c, i) => ({ ...c, index: i }))
-        .filter(c => c.parentProvince === id);
-      if (coastsForProvince.length === 0) return;
-      const currentPosInGroup = coastsForProvince.findIndex(c => c.index === selectedIndex);
-      if (currentPosInGroup !== -1) {
-        setSelectedIndex(coastsForProvince[(currentPosInGroup + 1) % coastsForProvince.length].index);
-      } else {
-        setSelectedIndex(coastsForProvince[0].index);
-      }
-      return;
-    }
-    const coastId = selectedCoast?.id;
-    if (!coastId || id === selectedCoast?.parentProvince) return;
-    setAdjacencyMap(prev => {
-      const current = prev[coastId] ?? [];
-      const exists = current.some(a => a.to === id);
-      return {
-        ...prev,
-        [coastId]: exists
-          ? current.filter(a => a.to !== id)
-          : [...current, { to: id, pass: "fleet" as PassType }],
-      };
-    });
-  };
-
-  const handleRemove = (adjId: string) => {
-    const coastId = selectedCoast?.id;
-    if (!coastId) return;
-    setAdjacencyMap(prev => ({
-      ...prev,
-      [coastId]: (prev[coastId] ?? []).filter(a => a.to !== adjId),
-    }));
-  };
-
-  const handlePassChange = (adjId: string, pass: PassType) => {
-    const coastId = selectedCoast?.id;
-    if (!coastId) return;
-    setAdjacencyMap(prev => ({
-      ...prev,
-      [coastId]: (prev[coastId] ?? []).map(a => (a.to === adjId ? { ...a, pass } : a)),
-    }));
-  };
-
-  const getName = (id: string) => provinceNames[id] ?? id;
-
-  const getProvinceFill = (id: string) => {
-    if (id === selectedCoast?.parentProvince) return { fill: "#FFD700", fillOpacity: 0.85 };
-    if (adjacentIds.includes(id)) return { fill: "#90EE90", fillOpacity: 0.85 };
-    if (namedCoastParentIds.has(id)) return { fill: "#22c55e", fillOpacity: 0.5 };
-    if (id === hoveredId) return { fill: "#ffffff", fillOpacity: 0.2 };
-    return { fill: "transparent", fillOpacity: 0 };
-  };
-
-  if (namedCoasts.length === 0) {
-    return <p className="text-sm text-muted-foreground">No named coasts in this map.</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Pass type guide */}
-      <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
-        <p className="mb-1.5 font-medium">Pass type guide</p>
-        <ul className="space-y-0.5 text-muted-foreground">
-          <li><span className="font-mono font-medium text-foreground">both</span> — coastal ↔ coastal sharing a coastline</li>
-          <li><span className="font-mono font-medium text-foreground">fleet</span> — sea ↔ sea, or sea ↔ coastal</li>
-          <li><span className="font-mono font-medium text-foreground">army</span> — land ↔ land, or coastal ↔ coastal with no shared coast (land bridge)</li>
-        </ul>
-      </div>
-
-      <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
-        {basePreviewUrl && (
-          <img src={basePreviewUrl} alt="Map" className="absolute inset-0 h-full w-full" />
-        )}
-        <svg
-          viewBox={viewBox}
-          className="absolute inset-0 h-full w-full"
-          style={{ cursor: isEditMode ? "crosshair" : "pointer" }}
-        >
-          {shapes.map(shape => {
-            const { fill, fillOpacity } = getProvinceFill(shape.id);
-            const isSelected = shape.id === selectedCoast?.parentProvince;
-            return (
-              <g
-                key={shape.id}
-                onClick={() => handleProvinceClick(shape.id)}
-                onMouseEnter={() => setHoveredId(shape.id)}
-                onMouseLeave={() => setHoveredId(null)}
-              >
-                {shape.paths.map((d, i) => (
-                  <path
-                    key={i}
-                    d={d}
-                    fill={fill}
-                    fillOpacity={fillOpacity}
-                    stroke={isSelected ? "#B8860B" : "transparent"}
-                    strokeWidth={isSelected ? 2 : 0}
-                  />
-                ))}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex justify-center gap-1">
-          <Button
-            variant={!isEditMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setIsEditMode(false)}
-          >
-            <MousePointer className="h-4 w-4" />
-            Select
-          </Button>
-          <Button
-            variant={isEditMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setIsEditMode(true)}
-          >
-            <Pencil className="h-4 w-4" />
-            Edit
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setSelectedIndex(prev => (prev > 0 ? prev - 1 : namedCoasts.length - 1))
-            }
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
-          </Button>
-
-          <div className="text-center text-sm">
-            <div className="font-medium">{selectedCoast?.name ?? ""}</div>
-            <div className="text-muted-foreground">
-              Coast {selectedIndex + 1} of {namedCoasts.length}
-              {" · "}
-              {currentAdjacencies.length} adjacencies
-            </div>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setSelectedIndex(prev => (prev < namedCoasts.length - 1 ? prev + 1 : 0))
-            }
-          >
-            Next
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-muted/50">
-            <tr className="border-b">
-              <th className="px-4 py-2.5 text-left font-medium">
-                Adjacent to {selectedCoast?.name ?? ""}
-              </th>
-              <th className="w-28 px-4 py-2.5 text-left font-medium">Pass</th>
-              <th className="w-16 px-4 py-2.5 text-right font-medium">Remove</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentAdjacencies.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-3 text-center text-muted-foreground">
-                  {isEditMode
-                    ? "Click provinces on the map to add adjacencies."
-                    : "Switch to Edit mode, then click provinces on the map."}
-                </td>
-              </tr>
-            ) : (
-              currentAdjacencies.map(adj => (
-                <tr key={adj.to} className="border-b hover:bg-muted/30">
-                  <td className="px-4 py-2">{getName(adj.to)}</td>
-                  <td className="px-4 py-2">
-                    <Select
-                      value={adj.pass}
-                      onValueChange={val => handlePassChange(adj.to, val as PassType)}
-                    >
-                      <SelectTrigger size="sm" className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="army">army</SelectItem>
-                        <SelectItem value="fleet">fleet</SelectItem>
-                        <SelectItem value="both">both</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => handleRemove(adj.to)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {emptyCoasts.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-          <div>
-            <p className="font-medium text-destructive">
-              {emptyCoasts.length} coast{emptyCoasts.length !== 1 ? "s" : ""} with no adjacencies
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {emptyCoasts.map(c => c.name).join(", ")}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-});
-
-NamedCoastAdjacenciesForm.displayName = "NamedCoastAdjacenciesForm";
-
 // ─── AdjacenciesForm ──────────────────────────────────────────────────────────
 
 interface AdjacenciesFormHandle {
@@ -1865,16 +1576,29 @@ interface AdjacenciesFormProps {
   svgContent: string;
   provinceNames: Record<string, string>;
   provinceTypes: Record<string, string>;
+  namedCoastsByParent: Record<string, string[]>;
+  coastNames: Record<string, string>;
   defaultValues: DvarAdjacencyMap;
   onSubmit: (adjacencyMap: DvarAdjacencyMap) => void;
 }
 
 const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
-  ({ svgContent, provinceNames, provinceTypes, defaultValues, onSubmit }, ref) => {
+  ({ svgContent, provinceNames, provinceTypes, namedCoastsByParent, defaultValues, onSubmit }, ref) => {
     const [adjacencyMap, setAdjacencyMap] = useState<DvarAdjacencyMap>(defaultValues);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [isEditMode, setIsEditMode] = useState(false);
+
+    interface CoastConnectionDialog {
+      fromProvinceId: string;
+      fromCoasts: string[];
+      toProvinceId: string;
+      toCoasts: string[];
+      defaultPass: PassType;
+    }
+    const [coastConnectionDialog, setCoastConnectionDialog] = useState<CoastConnectionDialog | null>(null);
+    const [dialogFromId, setDialogFromId] = useState<string>("");
+    const [dialogToId, setDialogToId] = useState<string>("");
 
     useImperativeHandle(ref, () => ({
       submit: () => onSubmit(adjacencyMap),
@@ -1892,7 +1616,6 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
         : "16 / 9";
     }, [viewBox]);
 
-    // Base background: all provinces neutral, no highlight
     const basePreviewSvg = useMemo(
       () => buildProvincePreviewSvg(svgContent, null),
       [svgContent]
@@ -1905,10 +1628,44 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
       return () => URL.revokeObjectURL(url);
     }, [basePreviewSvg]);
 
-    const allIds = shapes.map(s => s.id);
-    const selectedId = allIds[selectedIndex] ?? null;
-    const currentAdjacencies = selectedId ? (adjacencyMap[selectedId] ?? []) : [];
-    const adjacentIds = currentAdjacencies.map(a => a.to);
+    const listItems = useMemo(
+      () => shapes.map(shape => ({ id: shape.id })),
+      [shapes]
+    );
+
+    const coastToParent = useMemo(() => {
+      const map: Record<string, string> = {};
+      for (const [parentId, coasts] of Object.entries(namedCoastsByParent)) {
+        for (const coastId of coasts) map[coastId] = parentId;
+      }
+      return map;
+    }, [namedCoastsByParent]);
+
+    const selectedItem = listItems[selectedIndex] ?? null;
+    const selectedId = selectedItem?.id ?? null;
+
+    interface UnifiedAdj { fromId: string; to: string; pass: PassType; }
+    const currentAdjacencies = useMemo((): UnifiedAdj[] => {
+      if (!selectedId) return [];
+      const coasts = namedCoastsByParent[selectedId] ?? [];
+      const parentAdjs = (adjacencyMap[selectedId] ?? []).map(adj => ({
+        fromId: selectedId, to: adj.to, pass: adj.pass,
+      }));
+      const coastAdjs = coasts.flatMap(coastId =>
+        (adjacencyMap[coastId] ?? []).map(adj => ({
+          fromId: coastId, to: adj.to, pass: adj.pass,
+        }))
+      );
+      return [...parentAdjs, ...coastAdjs];
+    }, [selectedId, adjacencyMap, namedCoastsByParent]);
+
+    const adjacentIds = useMemo(() => {
+      const ids = new Set<string>();
+      for (const adj of currentAdjacencies) {
+        ids.add(coastToParent[adj.to] ?? adj.to);
+      }
+      return ids;
+    }, [currentAdjacencies, coastToParent]);
 
     const totalAdjacencies = useMemo(() => {
       let count = 0;
@@ -1925,48 +1682,93 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
     }, [adjacencyMap]);
 
     const isolatedIds = useMemo(
-      () => getIsolatedIds(allIds, adjacencyMap),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [adjacencyMap]
+      () => listItems.map(item => item.id).filter(id => {
+        const coasts = namedCoastsByParent[id] ?? [];
+        return [id, ...coasts].every(sid => !adjacencyMap[sid] || adjacencyMap[sid].length === 0);
+      }),
+      [listItems, adjacencyMap, namedCoastsByParent]
     );
 
     const handleAutoDetect = () => {
-      const detected = autoDetectDvarAdjacencies(shapes, provinceTypes);
+      const { shapes: coastShapes } = extractDsvgNamedCoastShapes(svgContent);
+      const namedCoastShapesWithParent = coastShapes.map(s => ({
+        ...s,
+        parentId: s.id.split("/")[0],
+      }));
+      const detected = autoDetectDvarAdjacencies(shapes, namedCoastShapesWithParent, provinceTypes);
       setAdjacencyMap(detected);
     };
 
-    const handleProvinceClick = (id: string) => {
+    const handleProvinceClick = (clickedProvinceId: string) => {
       if (!isEditMode) {
-        const index = allIds.indexOf(id);
-        if (index !== -1) setSelectedIndex(index);
+        const idx = listItems.findIndex(item => item.id === clickedProvinceId);
+        if (idx !== -1) setSelectedIndex(idx);
         return;
       }
-      if (!selectedId || id === selectedId) return;
-      setAdjacencyMap(prev => toggleDvarAdjacency(prev, selectedId, id));
+      if (!selectedId || clickedProvinceId === selectedId) return;
+
+      const fromCoasts = namedCoastsByParent[selectedId] ?? [];
+      const toCoasts = namedCoastsByParent[clickedProvinceId] ?? [];
+      const defaultPass: PassType =
+        provinceTypes[selectedId] === "sea" || provinceTypes[clickedProvinceId] === "sea"
+          ? "fleet"
+          : provinceTypes[selectedId] === "coastal" && provinceTypes[clickedProvinceId] === "coastal"
+            ? "both"
+            : "army";
+
+      if (fromCoasts.length > 0 || toCoasts.length > 0) {
+        setCoastConnectionDialog({ fromProvinceId: selectedId, fromCoasts, toProvinceId: clickedProvinceId, toCoasts, defaultPass });
+        setDialogFromId(selectedId);
+        setDialogToId(clickedProvinceId);
+      } else {
+        setAdjacencyMap(prev => toggleDvarAdjacency(prev, selectedId, clickedProvinceId, defaultPass));
+      }
     };
 
-    const handleRemove = (adjId: string) => {
-      if (!selectedId) return;
-      setAdjacencyMap(prev => toggleDvarAdjacency(prev, selectedId, adjId));
+    const handleCoastDialogConfirm = () => {
+      if (!coastConnectionDialog) return;
+      const fromId = dialogFromId;
+      const toId = dialogToId;
+      const pass: PassType =
+        fromId !== coastConnectionDialog.fromProvinceId || toId !== coastConnectionDialog.toProvinceId
+          ? "fleet"
+          : coastConnectionDialog.defaultPass;
+      setAdjacencyMap(prev => toggleDvarAdjacency(prev, fromId, toId, pass));
+      setCoastConnectionDialog(null);
     };
 
-    const handlePassChange = (adjId: string, pass: PassType) => {
-      if (!selectedId) return;
-      setAdjacencyMap(prev => setDvarAdjacencyPass(prev, selectedId, adjId, pass));
+    const handleRemove = (fromId: string, adjTo: string) => {
+      setAdjacencyMap(prev => toggleDvarAdjacency(prev, fromId, adjTo));
+    };
+
+    const handlePassChange = (fromId: string, adjTo: string, pass: PassType) => {
+      setAdjacencyMap(prev => setDvarAdjacencyPass(prev, fromId, adjTo, pass));
     };
 
     const getName = (id: string) => provinceNames[id] ?? id;
 
+    const getDisplayName = (id: string) => {
+      const parentId = coastToParent[id];
+      if (parentId) return `${getName(parentId)} (${getName(id)})`;
+      return getName(id);
+    };
+
     const getProvinceFill = (id: string) => {
       if (id === selectedId) return { fill: "#FFD700", fillOpacity: 0.85 };
-      if (adjacentIds.includes(id)) return { fill: "#90EE90", fillOpacity: 0.85 };
+      if (adjacentIds.has(id)) return { fill: "#90EE90", fillOpacity: 0.85 };
       if (id === hoveredId) return { fill: "#ffffff", fillOpacity: 0.2 };
       return { fill: "transparent", fillOpacity: 0 };
     };
 
+    const listRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const el = listRef.current?.querySelector(`[data-list-index="${selectedIndex}"]`);
+      el?.scrollIntoView({ block: "nearest" });
+    }, [selectedIndex]);
+
     return (
       <div className="space-y-4">
-        {/* Toolbar */}
         <div className="flex items-center gap-3">
           <Button type="button" variant="outline" size="sm" onClick={handleAutoDetect}>
             <Wand2 className="h-4 w-4" />
@@ -1980,7 +1782,6 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
           </span>
         </div>
 
-        {/* Pass type guide */}
         <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           <p className="mb-1.5 font-medium">Pass type guide</p>
           <ul className="space-y-0.5 text-muted-foreground">
@@ -1990,7 +1791,6 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
           </ul>
         </div>
 
-        {/* Map */}
         <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
           {basePreviewUrl && (
             <img
@@ -2030,140 +1830,251 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
           </svg>
         </div>
 
-        {/* Mode toggle + province navigator */}
-        <div className="space-y-2">
-          <div className="flex justify-center gap-1">
-            <Button
-              variant={!isEditMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsEditMode(false)}
-            >
-              <MousePointer className="h-4 w-4" />
-              Select
-            </Button>
-            <Button
-              variant={isEditMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsEditMode(true)}
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setSelectedIndex(prev =>
-                  prev > 0 ? prev - 1 : allIds.length - 1
-                )
-              }
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
-            </Button>
-
-            <div className="text-center text-sm">
-              <div className="font-medium">{getName(selectedId ?? "")}</div>
-              <div className="text-muted-foreground">
-                Province {selectedIndex + 1} of {allIds.length}
-                {" · "}
-                {currentAdjacencies.length} adjacencies
-              </div>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setSelectedIndex(prev =>
-                  prev < allIds.length - 1 ? prev + 1 : 0
-                )
-              }
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex justify-center gap-1">
+          <Button
+            variant={!isEditMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsEditMode(false)}
+          >
+            <MousePointer className="h-4 w-4" />
+            Select
+          </Button>
+          <Button
+            variant={isEditMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsEditMode(true)}
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Button>
         </div>
 
-        {/* Adjacency table */}
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-muted/50">
-              <tr className="border-b">
-                <th className="px-4 py-2.5 text-left font-medium">
-                  Adjacent to {getName(selectedId ?? "")}
-                </th>
-                <th className="w-28 px-4 py-2.5 text-left font-medium">Pass</th>
-                <th className="w-16 px-4 py-2.5 text-right font-medium">Remove</th>
-              </tr>
-            </thead>
-            <tbody className="max-h-[200px] overflow-y-auto">
-              {currentAdjacencies.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-4 py-3 text-center text-muted-foreground"
-                  >
-                    {isEditMode
-                      ? "Click provinces on the map to add adjacencies."
-                      : "Switch to Edit mode, then click provinces on the map."}
-                  </td>
+        <div className="grid grid-cols-[220px_1fr] gap-4">
+          <div className="flex flex-col gap-1">
+            <div
+              ref={listRef}
+              className="max-h-[400px] overflow-y-auto rounded-lg border"
+            >
+            {listItems.map((item, idx) => (
+              <button
+                key={item.id}
+                data-list-index={idx}
+                type="button"
+                onClick={() => setSelectedIndex(idx)}
+                className={cn(
+                  "w-full px-2 py-1.5 text-left transition-colors",
+                  idx === selectedIndex
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted/50"
+                )}
+              >
+                <div className={cn("truncate font-mono text-xs", idx === selectedIndex ? "text-primary-foreground" : "text-muted-foreground")}>
+                  {item.id}
+                </div>
+                <div className={cn("truncate text-sm", idx === selectedIndex && "text-primary-foreground")}>
+                  {getName(item.id)}
+                </div>
+              </button>
+            ))}
+            </div>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={selectedIndex === 0}
+                onClick={() => setSelectedIndex(i => Math.max(0, i - 1))}
+              >
+                <ChevronUp className="h-4 w-4" />
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={selectedIndex >= listItems.length - 1}
+                onClick={() => setSelectedIndex(i => Math.min(listItems.length - 1, i + 1))}
+              >
+                <ChevronDown className="h-4 w-4" />
+                Next
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-muted/50">
+                <tr className="border-b">
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    Adjacent to {getName(selectedId ?? "")}
+                  </th>
+                  <th className="w-28 px-4 py-2.5 text-left font-medium">Pass</th>
+                  <th className="w-16 px-4 py-2.5 text-right font-medium">Remove</th>
                 </tr>
-              ) : (
-                currentAdjacencies.map(adj => (
-                  <tr key={adj.to} className="border-b hover:bg-muted/30">
-                    <td className="px-4 py-2">{getName(adj.to)}</td>
-                    <td className="px-4 py-2">
-                      <Select
-                        value={adj.pass}
-                        onValueChange={val =>
-                          handlePassChange(adj.to, val as PassType)
-                        }
-                      >
-                        <SelectTrigger size="sm" className="w-24">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="army">army</SelectItem>
-                          <SelectItem value="fleet">fleet</SelectItem>
-                          <SelectItem value="both">both</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemove(adj.to)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+              </thead>
+              <tbody>
+                {currentAdjacencies.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="px-4 py-3 text-center text-muted-foreground"
+                    >
+                      {isEditMode
+                        ? "Click provinces on the map to add adjacencies."
+                        : "Switch to Edit mode, then click provinces on the map."}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  currentAdjacencies.map(adj => {
+                    const fromCoastName = adj.fromId !== selectedId ? getName(adj.fromId) : null;
+                    return (
+                      <tr key={`${adj.fromId}-${adj.to}`} className="border-b hover:bg-muted/30">
+                        <td className="px-4 py-2">
+                          {fromCoastName && (
+                            <span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                              {fromCoastName}
+                            </span>
+                          )}
+                          {getDisplayName(adj.to)}
+                        </td>
+                        <td className="px-4 py-2">
+                          <Select
+                            value={adj.pass}
+                            onValueChange={val =>
+                              handlePassChange(adj.fromId, adj.to, val as PassType)
+                            }
+                          >
+                            <SelectTrigger size="sm" className="w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="army">army</SelectItem>
+                              <SelectItem value="fleet">fleet</SelectItem>
+                              <SelectItem value="both">both</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemove(adj.fromId, adj.to)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Isolated provinces warning */}
         {isolatedIds.length > 0 && (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-4">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
             <div>
               <p className="font-medium text-destructive">
-                {isolatedIds.length} province
-                {isolatedIds.length !== 1 ? "s" : ""} with no adjacencies
+                {isolatedIds.length} province{isolatedIds.length !== 1 ? "s" : ""} with no adjacencies
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {isolatedIds.map(id => getName(id)).join(", ")}
               </p>
             </div>
           </div>
+        )}
+
+        {coastConnectionDialog && (
+          <Dialog open onOpenChange={(open) => { if (!open) setCoastConnectionDialog(null); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Connection</DialogTitle>
+                <DialogDescription>
+                  Choose which sub-provinces to connect.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {coastConnectionDialog.fromCoasts.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      From which part of {getName(coastConnectionDialog.fromProvinceId)}?
+                    </p>
+                    <div className="space-y-1">
+                      {[coastConnectionDialog.fromProvinceId, ...coastConnectionDialog.fromCoasts].map(id => {
+                        const alreadyConn = (adjacencyMap[id] ?? []).some(a => a.to === dialogToId);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setDialogFromId(id)}
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                              dialogFromId === id
+                                ? "border-primary bg-primary/10 font-medium"
+                                : "hover:bg-muted/50",
+                              alreadyConn && "opacity-50"
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <span>{getName(id)}</span>
+                              <span className="ml-2 font-mono text-xs text-muted-foreground">{id}</span>
+                            </div>
+                            {alreadyConn && (
+                              <span className="shrink-0 text-xs text-muted-foreground">connected</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {coastConnectionDialog.toCoasts.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      To which part of {getName(coastConnectionDialog.toProvinceId)}?
+                    </p>
+                    <div className="space-y-1">
+                      {[coastConnectionDialog.toProvinceId, ...coastConnectionDialog.toCoasts].map(id => {
+                        const alreadyConn = (adjacencyMap[dialogFromId] ?? []).some(a => a.to === id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setDialogToId(id)}
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                              dialogToId === id
+                                ? "border-primary bg-primary/10 font-medium"
+                                : "hover:bg-muted/50",
+                              alreadyConn && "opacity-50"
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <span>{getName(id)}</span>
+                              <span className="ml-2 font-mono text-xs text-muted-foreground">{id}</span>
+                            </div>
+                            {alreadyConn && (
+                              <span className="shrink-0 text-xs text-muted-foreground">connected</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCoastConnectionDialog(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCoastDialogConfirm}>
+                  {(adjacencyMap[dialogFromId] ?? []).some(a => a.to === dialogToId) ? "Remove" : "Add"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     );
@@ -2747,6 +2658,57 @@ const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, VictoryCon
 
 VictoryConditionsForm.displayName = "VictoryConditionsForm";
 
+// ─── Adjudication modifiers step ──────────────────────────────────────────────
+
+interface AdjudicationModifiersFormHandle {
+  submit: () => void;
+}
+
+interface AdjudicationModifiersFormProps {
+  defaultValues: string[];
+  onSubmit: (data: string[]) => void;
+}
+
+const AdjudicationModifiersForm = forwardRef<AdjudicationModifiersFormHandle, AdjudicationModifiersFormProps>(
+  ({ defaultValues, onSubmit }, ref) => {
+    const [buildAnywhere, setBuildAnywhere] = useState(
+      defaultValues.includes("allow-builds-in-non-home-centers")
+    );
+
+    useImperativeHandle(ref, () => ({
+      submit: () => {
+        const modifiers: string[] = [];
+        if (buildAnywhere) modifiers.push("allow-builds-in-non-home-centers");
+        onSubmit(modifiers);
+      },
+    }));
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold">Game Rules</h2>
+          <p className="text-sm text-muted-foreground">Configure adjudicator rule modifiers for this variant.</p>
+        </div>
+        <label className="flex cursor-pointer items-start gap-3">
+          <Checkbox
+            checked={buildAnywhere}
+            onCheckedChange={checked => setBuildAnywhere(checked === true)}
+            className="mt-0.5"
+          />
+          <div>
+            <p className="font-medium">Build anywhere</p>
+            <p className="text-sm text-muted-foreground">
+              Nations may build in any vacant owned supply center, not only home centers.
+            </p>
+          </div>
+        </label>
+      </div>
+    );
+  }
+);
+
+AdjudicationModifiersForm.displayName = "AdjudicationModifiersForm";
+
 // ─── Export step ──────────────────────────────────────────────────────────────
 
 interface ExportStepProps {
@@ -2755,10 +2717,10 @@ interface ExportStepProps {
   provincesData: ProvincesFormValues;
   homeNationsData: HomeNationsData;
   adjacenciesData: DvarAdjacencyMap;
-  namedCoastAdjacenciesData: Record<string, DvarAdjacency[]> | null;
   dominanceRulesData: DominanceRulesData;
   phaseProgressionData: PhaseProgressionData;
   victoryConditionsData: VictoryConditionsData;
+  adjudicationModifiersData: string[];
 }
 
 function assembleDvar({
@@ -2767,10 +2729,10 @@ function assembleDvar({
   provincesData,
   homeNationsData,
   adjacenciesData,
-  namedCoastAdjacenciesData,
   dominanceRulesData,
   phaseProgressionData,
   victoryConditionsData,
+  adjudicationModifiersData,
 }: ExportStepProps): Record<string, unknown> {
   const provinces = provincesData.provinces.map(p => {
     const entry = homeNationsData[p.id];
@@ -2792,7 +2754,7 @@ function assembleDvar({
       id: coast.id,
       name: coast.name,
       parentProvince: p.id,
-      adjacencies: (namedCoastAdjacenciesData?.[coast.id] ?? []).map(a => ({
+      adjacencies: (adjacenciesData[coast.id] ?? []).map(a => ({
         to: a.to,
         pass: "fleet" as const,
       })),
@@ -2857,6 +2819,7 @@ function assembleDvar({
   };
 
   if (basicInfo.rules?.trim()) output.rules = basicInfo.rules;
+  if (adjudicationModifiersData.length > 0) output.adjudicationModifiers = adjudicationModifiersData;
   if (dominanceRules.length > 0) output.dominanceRules = dominanceRules;
 
   return output;

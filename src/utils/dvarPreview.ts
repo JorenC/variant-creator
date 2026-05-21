@@ -32,6 +32,25 @@ export function extractDsvgProvinceShapes(svgContent: string): {
   return { shapes, viewBox };
 }
 
+export function extractDsvgNamedCoastShapes(svgContent: string): {
+  shapes: DvarProvinceShape[];
+  viewBox: string;
+} {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const viewBox = doc.documentElement.getAttribute("viewBox") ?? "0 0 1000 1000";
+  const coastsLayer = doc.getElementById("named-coasts");
+  if (!coastsLayer) return { shapes: [], viewBox };
+
+  const shapes: DvarProvinceShape[] = [];
+  for (const child of Array.from(coastsLayer.children)) {
+    const id = child.getAttribute("id");
+    if (!id) continue;
+    shapes.push({ id, paths: collectPaths(child) });
+  }
+  return { shapes, viewBox };
+}
+
 export function buildHomeNationPreviewSvg(
   svgContent: string,
   provinceColors: Record<string, string>,
