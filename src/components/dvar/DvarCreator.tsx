@@ -1659,13 +1659,23 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
       return [...parentAdjs, ...coastAdjs];
     }, [selectedId, adjacencyMap, namedCoastsByParent]);
 
-    const adjacentIds = useMemo(() => {
-      const ids = new Set<string>();
+    const adjacentTypeMap = useMemo(() => {
+      const passRank: Record<PassType, number> = { army: 1, fleet: 2, both: 3 };
+      const map = new Map<string, PassType>();
       for (const adj of currentAdjacencies) {
-        ids.add(coastToParent[adj.to] ?? adj.to);
+        const parentId = coastToParent[adj.to] ?? adj.to;
+        const existing = map.get(parentId);
+        if (!existing || passRank[adj.pass] > passRank[existing]) {
+          map.set(parentId, adj.pass);
+        }
       }
-      return ids;
+      return map;
     }, [currentAdjacencies, coastToParent]);
+
+    const coastShapes = useMemo(
+      () => extractDsvgNamedCoastShapes(svgContent).shapes,
+      [svgContent]
+    );
 
     const totalAdjacencies = useMemo(() => {
       let count = 0;
@@ -1753,9 +1763,21 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
       return getName(id);
     };
 
+    const ADJACENT_FILLS: Record<PassType, string> = {
+      army: "#90EE90",
+      fleet: "#87CEEB",
+      both: "#FFE066",
+    };
+    const ADJACENT_STROKES: Record<PassType, string> = {
+      army: "#4CAF50",
+      fleet: "#2196F3",
+      both: "#D97706",
+    };
+
     const getProvinceFill = (id: string) => {
-      if (id === selectedId) return { fill: "#FFD700", fillOpacity: 0.85 };
-      if (adjacentIds.has(id)) return { fill: "#90EE90", fillOpacity: 0.85 };
+      if (id === selectedId) return { fill: "#EF4444", fillOpacity: 0.85 };
+      const adjType = adjacentTypeMap.get(id);
+      if (adjType !== undefined) return { fill: ADJACENT_FILLS[adjType], fillOpacity: 0.85 };
       if (id === hoveredId) return { fill: "#ffffff", fillOpacity: 0.2 };
       return { fill: "transparent", fillOpacity: 0 };
     };
@@ -1820,12 +1842,29 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
                       d={d}
                       fill={fill}
                       fillOpacity={fillOpacity}
-                      stroke={isSelected ? "#B8860B" : "transparent"}
+                      stroke={isSelected ? "#B91C1C" : "transparent"}
                       strokeWidth={isSelected ? 2 : 0}
                     />
                   ))}
                 </g>
               );
+            })}
+            {coastShapes.flatMap(coast => {
+              const parentId = coast.id.split("/")[0];
+              const isParentSelected = parentId === selectedId;
+              const adjType = adjacentTypeMap.get(parentId);
+              if (!isParentSelected && adjType === undefined) return [];
+              const stroke = isParentSelected ? "#B91C1C" : ADJACENT_STROKES[adjType!];
+              return coast.paths.map((d, i) => (
+                <path
+                  key={`${coast.id}-${i}`}
+                  d={d}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={2}
+                  pointerEvents="none"
+                />
+              ));
             })}
           </svg>
         </div>
