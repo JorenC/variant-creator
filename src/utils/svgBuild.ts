@@ -94,6 +94,65 @@ function propagateRootFill(root: Element, fillValue: string): void {
   }
 }
 
+// ─── Shape-to-path conversion (for province/named-coast layers) ──────────────
+
+// Converts <circle>, <ellipse>, and <rect> elements to equivalent <path> elements.
+// The diplicity validator requires <path> elements in the provinces and named-coasts layers.
+function shapeToPath(doc: Document, el: Element): Element | null {
+  const tag = el.tagName.toLowerCase();
+  let d: string | null = null;
+
+  if (tag === "circle") {
+    const cx = parseFloat(el.getAttribute("cx") ?? "0");
+    const cy = parseFloat(el.getAttribute("cy") ?? "0");
+    const r = parseFloat(el.getAttribute("r") ?? "0");
+    if (r <= 0) return null;
+    d = `M ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} Z`;
+  } else if (tag === "ellipse") {
+    const cx = parseFloat(el.getAttribute("cx") ?? "0");
+    const cy = parseFloat(el.getAttribute("cy") ?? "0");
+    const rx = parseFloat(el.getAttribute("rx") ?? "0");
+    const ry = parseFloat(el.getAttribute("ry") ?? "0");
+    if (rx <= 0 || ry <= 0) return null;
+    d = `M ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} Z`;
+  } else if (tag === "rect") {
+    const x = parseFloat(el.getAttribute("x") ?? "0");
+    const y = parseFloat(el.getAttribute("y") ?? "0");
+    const w = parseFloat(el.getAttribute("width") ?? "0");
+    const h = parseFloat(el.getAttribute("height") ?? "0");
+    if (w <= 0 || h <= 0) return null;
+    const rx = parseFloat(el.getAttribute("rx") ?? "0");
+    const ry = parseFloat(el.getAttribute("ry") ?? el.getAttribute("rx") ?? "0");
+    if (rx > 0 || ry > 0) {
+      const rrx = Math.min(rx, w / 2), rry = Math.min(ry, h / 2);
+      d = `M ${x + rrx} ${y} H ${x + w - rrx} A ${rrx} ${rry} 0 0 1 ${x + w} ${y + rry} V ${y + h - rry} A ${rrx} ${rry} 0 0 1 ${x + w - rrx} ${y + h} H ${x + rrx} A ${rrx} ${rry} 0 0 1 ${x} ${y + h - rry} V ${y + rry} A ${rrx} ${rry} 0 0 1 ${x + rrx} ${y} Z`;
+    } else {
+      d = `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+    }
+  }
+
+  if (!d) return null;
+
+  const pathEl = doc.createElementNS(SVG_NS, "path");
+  pathEl.setAttribute("d", d);
+  for (const attr of Array.from(el.attributes)) {
+    if (!["cx", "cy", "r", "rx", "ry", "x", "y", "width", "height"].includes(attr.name)) {
+      pathEl.setAttribute(attr.name, attr.value);
+    }
+  }
+  return pathEl;
+}
+
+function convertShapesToPaths(doc: Document, layer: Element): void {
+  for (const child of Array.from(layer.children)) {
+    const tag = child.tagName.toLowerCase();
+    if (tag === "circle" || tag === "ellipse" || tag === "rect") {
+      const pathEl = shapeToPath(doc, child);
+      if (pathEl) layer.replaceChild(pathEl, child);
+    }
+  }
+}
+
 // ─── Path-to-circle conversion ───────────────────────────────────────────────
 
 // Detects circles drawn as 4 cubic Bezier arcs (Inkscape's default representation)
@@ -228,11 +287,13 @@ export function buildDsvgOutput(
   const pLayer = provincesEl ?? makeLayerGroup(doc, "provinces");
   pLayer.setAttribute("id", "provinces");
   pLayer.setAttribute("style", "display:none");
+  convertShapesToPaths(doc, pLayer);
   root.appendChild(pLayer);
 
   const ncLayer = namedCoastsEl ?? makeLayerGroup(doc, "named-coasts");
   ncLayer.setAttribute("id", "named-coasts");
   ncLayer.setAttribute("style", "display:none");
+  convertShapesToPaths(doc, ncLayer);
   root.appendChild(ncLayer);
 
   const upLayer = unitPositionsEl ?? makeLayerGroup(doc, "unit-positions");
