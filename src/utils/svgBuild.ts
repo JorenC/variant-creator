@@ -77,6 +77,55 @@ function removeNonSvgChildren(root: Element): void {
   remove.forEach(el => el.parentNode?.removeChild(el));
 }
 
+// ─── Fill inheritance fix ─────────────────────────────────────────────────────
+
+const DRAWABLE_TAGS = new Set(["path", "rect", "circle", "ellipse", "polygon", "polyline", "line"]);
+
+// When the source SVG has fill="none" on its root, child elements that have no
+// explicit fill rely on that inherited value. After extraction into a new SVG
+// (by dsvgParser), those elements default to fill="black". This function
+// propagates the root fill explicitly to every drawable element that lacks one,
+// making the exported dSVG self-contained.
+function propagateRootFill(root: Element, fillValue: string): void {
+  for (const el of Array.from(root.querySelectorAll("*"))) {
+    if (DRAWABLE_TAGS.has(el.tagName.toLowerCase()) && !el.hasAttribute("fill")) {
+      el.setAttribute("fill", fillValue);
+    }
+  }
+}
+
+// ─── Path-to-circle conversion ───────────────────────────────────────────────
+
+// Detects circles drawn as 4 cubic Bezier arcs (Inkscape's default representation)
+// and returns their center/radius. Returns null for non-circular shapes.
+function pathToCircle(d: string): { cx: number; cy: number; r: number } | null {
+  const mMatch = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)/);
+  if (!mMatch) return null;
+
+  // Collect endpoints of each absolute C command (the 5th and 6th number of each triplet)
+  const endpointXs: number[] = [parseFloat(mMatch[1])];
+  const endpointYs: number[] = [parseFloat(mMatch[2])];
+  const cRe = /C\s*[-\d.]+[,\s]+[-\d.]+[,\s]+[-\d.]+[,\s]+[-\d.]+[,\s]+([-\d.]+)[,\s]+([-\d.]+)/g;
+  let m;
+  while ((m = cRe.exec(d)) !== null) {
+    endpointXs.push(parseFloat(m[1]));
+    endpointYs.push(parseFloat(m[2]));
+  }
+  if (endpointXs.length < 3) return null;
+
+  const minX = Math.min(...endpointXs), maxX = Math.max(...endpointXs);
+  const minY = Math.min(...endpointYs), maxY = Math.max(...endpointYs);
+  const w = maxX - minX, h = maxY - minY;
+  if (w <= 0 || h <= 0) return null;
+  if (Math.min(w, h) / Math.max(w, h) < 0.8) return null; // not circular
+
+  return {
+    cx: parseFloat(((minX + maxX) / 2).toFixed(3)),
+    cy: parseFloat(((minY + maxY) / 2).toFixed(3)),
+    r: parseFloat(((w + h) / 4).toFixed(3)),
+  };
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function buildDsvgOutput(
@@ -87,6 +136,8 @@ export function buildDsvgOutput(
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
   const root = doc.documentElement;
+
+  const rootFill = root.getAttribute("fill");
 
   // 1. Resolve all transform attributes → bake into coordinates
   resolveTransforms(root);
@@ -193,6 +244,23 @@ export function buildDsvgOutput(
       child.setAttribute("id", unitPositionCodes[id].toLowerCase());
     }
   }
+  // Convert path circles to <circle> elements (diplicity validator requires <circle> tags)
+  for (const child of Array.from(upLayer.children)) {
+    if (child.tagName.toLowerCase() !== "path") continue;
+    const d = child.getAttribute("d");
+    if (!d) continue;
+    const circle = pathToCircle(d);
+    if (!circle) continue;
+    const circleEl = doc.createElementNS(SVG_NS, "circle");
+    const elId = child.getAttribute("id");
+    if (elId) circleEl.setAttribute("id", elId);
+    circleEl.setAttribute("cx", String(circle.cx));
+    circleEl.setAttribute("cy", String(circle.cy));
+    circleEl.setAttribute("r", String(circle.r));
+    const fill = child.getAttribute("fill");
+    if (fill) circleEl.setAttribute("fill", fill);
+    upLayer.replaceChild(circleEl, child);
+  }
   root.appendChild(upLayer);
 
   const pnLayer = provinceNamesEl ?? makeLayerGroup(doc, "province-names");
@@ -212,6 +280,13 @@ export function buildDsvgOutput(
   // 7. Strip all Inkscape/sodipodi attributes from the whole tree
   stripElement(root);
   stripRootNamespaces(root);
+
+  // 8. If the source root declared fill="none", propagate it explicitly to all
+  //    drawable elements that lack a fill attribute, so they remain correct when
+  //    extracted into a new SVG document by dsvgParser.
+  if (rootFill !== null) {
+    propagateRootFill(root, rootFill);
+  }
 
   return new XMLSerializer().serializeToString(doc);
 }
