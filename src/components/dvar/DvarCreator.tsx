@@ -1384,6 +1384,10 @@ interface HomeNationsFormProps {
 
 const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
   ({ svgContent, scProvinces, nations, defaultValues, onSubmit }, ref) => {
+    const sortedProvinces = useMemo(
+      () => [...scProvinces].sort((a, b) => a.id.localeCompare(b.id)),
+      [scProvinces]
+    );
     const [assignment, setAssignment] = useState<HomeNationsData>(defaultValues);
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -1391,26 +1395,26 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
     const coastErrors = useMemo((): Set<string> => {
       if (!submitAttempted) return new Set();
       const errors = new Set<string>();
-      for (const province of scProvinces) {
+      for (const province of sortedProvinces) {
         const entry = assignment[province.id];
         if (entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast) {
           errors.add(province.id);
         }
       }
       return errors;
-    }, [submitAttempted, scProvinces, assignment]);
+    }, [submitAttempted, sortedProvinces, assignment]);
 
     useImperativeHandle(ref, () => ({
       submit: () => {
         setSubmitAttempted(true);
-        const hasErrors = scProvinces.some(province => {
+        const hasErrors = sortedProvinces.some(province => {
           const entry = assignment[province.id];
           return entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast;
         });
         if (hasErrors) return;
         onSubmit(assignment);
       },
-    }), [assignment, onSubmit, scProvinces]);
+    }), [assignment, onSubmit, sortedProvinces]);
 
     const provinceColors = useMemo(() => {
       const nationColorMap: Record<string, string> = {};
@@ -1454,7 +1458,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
       ...nations.map(n => ({ value: n.id, label: n.name, color: n.color })),
     ], [nations]);
 
-    if (scProvinces.length === 0) {
+    if (sortedProvinces.length === 0) {
       return (
         <p className="text-sm text-muted-foreground">
           No supply centers defined. Go back and mark provinces as SC in the Provinces step.
@@ -1472,7 +1476,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
         )}
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
-          {scProvinces.map(province => {
+          {sortedProvinces.map(province => {
             const entry = assignment[province.id] ?? { nation: "", startingUnit: null };
             return (
               <div
