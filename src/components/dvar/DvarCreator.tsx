@@ -1242,6 +1242,10 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
       )}
 
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+        <div className="flex flex-col gap-1">
+        <div className="pr-2 text-right text-xs text-muted-foreground">
+          {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
+        </div>
         <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
           {defaultValues.provinces.map((province, i) => (
             <div
@@ -1347,6 +1351,7 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
               )}
             </div>
           ))}
+        </div>
         </div>
 
         <div className="sticky top-8 self-start">
