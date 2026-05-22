@@ -3,9 +3,35 @@ export interface DvarProvinceShape {
   paths: string[];
 }
 
+function elementToPathD(el: Element): string | null {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "path") return el.getAttribute("d");
+  if (tag === "circle") {
+    const cx = parseFloat(el.getAttribute("cx") ?? "0");
+    const cy = parseFloat(el.getAttribute("cy") ?? "0");
+    const r = parseFloat(el.getAttribute("r") ?? "0");
+    return `M ${cx - r},${cy} a ${r},${r} 0 1,0 ${r * 2},0 a ${r},${r} 0 1,0 ${-r * 2},0 Z`;
+  }
+  if (tag === "ellipse") {
+    const cx = parseFloat(el.getAttribute("cx") ?? "0");
+    const cy = parseFloat(el.getAttribute("cy") ?? "0");
+    const rx = parseFloat(el.getAttribute("rx") ?? "0");
+    const ry = parseFloat(el.getAttribute("ry") ?? "0");
+    return `M ${cx - rx},${cy} a ${rx},${ry} 0 1,0 ${rx * 2},0 a ${rx},${ry} 0 1,0 ${-rx * 2},0 Z`;
+  }
+  if (tag === "rect") {
+    const x = parseFloat(el.getAttribute("x") ?? "0");
+    const y = parseFloat(el.getAttribute("y") ?? "0");
+    const w = parseFloat(el.getAttribute("width") ?? "0");
+    const h = parseFloat(el.getAttribute("height") ?? "0");
+    return `M ${x},${y} H ${x + w} V ${y + h} H ${x} Z`;
+  }
+  return null;
+}
+
 function collectPaths(el: Element): string[] {
   const result: string[] = [];
-  const d = el.getAttribute("d");
+  const d = elementToPathD(el);
   if (d) result.push(d);
   for (const child of Array.from(el.children)) {
     result.push(...collectPaths(child));
