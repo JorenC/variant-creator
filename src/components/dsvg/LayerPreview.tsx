@@ -126,7 +126,6 @@ export const LayerPreview = forwardRef<LayerPreviewHandle, LayerPreviewProps>(
 
       if (error) {
         setErrors(prev => ({ ...prev, [svgId]: error }));
-        requestAnimationFrame(() => inputRefs.current[svgId]?.focus());
       } else {
         setErrors(prev => {
           const next = { ...prev };
