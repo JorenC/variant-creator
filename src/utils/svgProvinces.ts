@@ -105,9 +105,10 @@ export function extractProvinces(
 
   const provinces: ProvinceElement[] = [];
   Array.from(el.children).forEach(child => {
-    const id = child.getAttribute("id");
-    if (!id) return;
-    provinces.push({ svgId: id, pathData: collectPathData(child) });
+    // Prefer inkscape:label (Inkscape files) over id (Figma/generic files)
+    const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
+    if (!svgId) return;
+    provinces.push({ svgId, pathData: collectPathData(child) });
   });
 
   return { viewBox, provinces };

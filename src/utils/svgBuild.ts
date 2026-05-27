@@ -185,6 +185,21 @@ function pathToCircle(d: string): { cx: number; cy: number; r: number } | null {
   };
 }
 
+// ─── Inkscape label → id promotion ───────────────────────────────────────────
+
+// Inkscape files store meaningful province/coast identifiers in inkscape:label
+// (e.g. inkscape:label="EDI") rather than in the id attribute (e.g. id="path120").
+// Before stripping all inkscape namespaced attributes we promote each child's
+// inkscape:label value to its id so the output dSVG uses the human-readable key.
+function relabelByInkscape(layer: Element): void {
+  for (const child of Array.from(layer.children)) {
+    const label = child.getAttribute("inkscape:label");
+    if (label) {
+      child.setAttribute("id", label.toLowerCase());
+    }
+  }
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function buildDsvgOutput(
@@ -201,10 +216,13 @@ export function buildDsvgOutput(
   // 1. Resolve all transform attributes → bake into coordinates
   resolveTransforms(root);
 
-  // 2. Strip non-SVG elements from root
-  removeNonSvgChildren(root);
+  // NOTE: removeNonSvgChildren is intentionally deferred until after steps 3–4.
+  // Calling it here would remove <sodipodi:namedview> (index 1 in Inkscape files)
+  // and shift all subsequent children, making the numeric layer keys (e.g. "root-3")
+  // point to the wrong elements during cloning and sibling classification.
 
-  // 3. Clone assigned layers
+  // 2. Clone assigned layers (while original child indices are still intact)
+  //    removeNonSvgChildren has NOT been called yet, so indices match parseSvgTree.
   const cloneByKey = (key: string | null): Element | null => {
     if (!key) return null;
     const el = getElementByKey(root, key);
@@ -264,6 +282,11 @@ export function buildDsvgOutput(
     }
   }
 
+  // 3b. Now safe to remove non-SVG root children (metadata, sodipodi:namedview, etc.).
+  // Cloning and classification above used the original indices; from here on the
+  // exact child order of root no longer matters for key-based lookups.
+  removeNonSvgChildren(root);
+
   // 5. Collect non-<g> root children (defs, style, etc.)
   const headerNodes: Node[] = [];
   Array.from(root.childNodes).forEach(child => {
@@ -288,21 +311,29 @@ export function buildDsvgOutput(
   pLayer.setAttribute("id", "provinces");
   pLayer.setAttribute("style", "display:none");
   convertShapesToPaths(doc, pLayer);
+  // Promote inkscape:label → id so Inkscape-authored province paths get
+  // meaningful ids (e.g. "edi") rather than auto-generated ones ("path120").
+  // For Figma/generic SVGs that have no inkscape:label this is a no-op.
+  relabelByInkscape(pLayer);
   root.appendChild(pLayer);
 
   const ncLayer = namedCoastsEl ?? makeLayerGroup(doc, "named-coasts");
   ncLayer.setAttribute("id", "named-coasts");
   ncLayer.setAttribute("style", "display:none");
   convertShapesToPaths(doc, ncLayer);
+  // Same label promotion for named-coast paths (e.g. "mor/wc").
+  relabelByInkscape(ncLayer);
   root.appendChild(ncLayer);
 
   const upLayer = unitPositionsEl ?? makeLayerGroup(doc, "unit-positions");
   upLayer.setAttribute("id", "unit-positions");
   upLayer.setAttribute("style", "display:none");
   for (const child of Array.from(upLayer.children)) {
-    const id = child.getAttribute("id");
-    if (id && unitPositionCodes[id]) {
-      child.setAttribute("id", unitPositionCodes[id].toLowerCase());
+    // Prefer inkscape:label (Inkscape files) over id (Figma/generic files) when
+    // looking up the user-assigned code so the rename works for both sources.
+    const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
+    if (svgId && unitPositionCodes[svgId]) {
+      child.setAttribute("id", unitPositionCodes[svgId].toLowerCase());
     }
   }
   // Convert path circles to <circle> elements (diplicity validator requires <circle> tags)

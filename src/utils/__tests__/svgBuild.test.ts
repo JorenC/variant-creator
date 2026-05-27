@@ -35,6 +35,76 @@ function getFill(doc: Document, id: string): string | null {
   return doc.getElementById(id)?.getAttribute("fill") ?? null;
 }
 
+// Inkscape SVG with sodipodi:namedview (index 1) before the layer groups.
+// parseSvgTree assigns keys with sodipodi:namedview present, so:
+//   root.children[0] = defs      → root-0 (skipped, not a <g>)
+//   root.children[1] = namedview → root-1 (skipped, not a <g>)
+//   root.children[2] = background g → root-2
+//   root.children[3] = provinces g  → root-3
+//   root.children[4] = fg g         → root-4
+// buildDsvgOutput must clone using those original indices (before removing namedview).
+function makeInkscapeSvg(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+     viewBox="0 0 100 100">
+  <defs id="defs1"/>
+  <sodipodi:namedview id="namedview1"/>
+  <g id="bg" inkscape:groupmode="layer" inkscape:label="background">
+    <rect id="bg-rect" width="100" height="100" fill="tan"/>
+  </g>
+  <g id="provs" inkscape:groupmode="layer" inkscape:label="provinces">
+    <path id="path1" inkscape:label="AAA" d="M0 0 L10 0 L10 10 Z"/>
+    <path id="path2" inkscape:label="BBB" d="M20 0 L30 0 L30 10 Z"/>
+  </g>
+  <g id="fg" inkscape:groupmode="layer" inkscape:label="foreground">
+    <path id="border1" d="M0 0 L100 0 L100 100 Z"/>
+  </g>
+</svg>`;
+}
+
+describe("buildDsvgOutput – Inkscape sodipodi:namedview index shift", () => {
+  it("clones the correct layer when sodipodi:namedview precedes it", () => {
+    // provinces is at root.children[3] (index 3) in the Inkscape SVG.
+    // Without the fix, removeNonSvgChildren would shift it to index 2
+    // and cloneByKey("root-3") would grab the wrong element.
+    const assignments: LayerAssignments = {
+      provinces: "root-3",
+      namedCoasts: null,
+      unitPositions: null,
+      provinceNames: null,
+      borders: null,
+    };
+    const output = buildDsvgOutput(makeInkscapeSvg(), assignments);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+
+    const provLayer = doc.getElementById("provinces");
+    expect(provLayer).not.toBeNull();
+    // After relabelByInkscape, children should have ids from inkscape:label
+    const childIds = Array.from(provLayer!.children).map(c => c.getAttribute("id"));
+    expect(childIds).toEqual(["aaa", "bbb"]);
+  });
+
+  it("does not include the provinces group in the background layer", () => {
+    const assignments: LayerAssignments = {
+      provinces: "root-3",
+      namedCoasts: null,
+      unitPositions: null,
+      provinceNames: null,
+      borders: null,
+    };
+    const output = buildDsvgOutput(makeInkscapeSvg(), assignments);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+
+    // The provinces group (id="provs") must NOT appear inside background
+    const bgLayer = doc.getElementById("background");
+    expect(bgLayer).not.toBeNull();
+    // provs should not be a descendant of background
+    expect(bgLayer!.querySelector("#provs")).toBeNull();
+  });
+});
+
 describe("buildDsvgOutput – root fill propagation", () => {
   it("adds fill='none' to paths without explicit fill when root has fill='none'", () => {
     const svg = makeSvg(` fill="none"`);
