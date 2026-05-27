@@ -173,35 +173,45 @@ function convertShapesToPaths(doc: Document, layer: Element): void {
   }
 }
 
-// ─── Path-to-circle conversion ───────────────────────────────────────────────
+// ─── Path centre extraction (for unit-position markers) ──────────────────────
 
-// Detects circles drawn as 4 cubic Bezier arcs (Inkscape's default representation)
-// and returns their center/radius. Returns null for non-circular shapes.
-function pathToCircle(d: string): { cx: number; cy: number; r: number } | null {
-  const mMatch = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)/);
+// Returns the bounding-box centre and approximate radius of a path element by
+// sampling the start point (M) and the destination point of each absolute
+// C / L / Q command. Works for circles drawn with any number of bezier arcs
+// (Inkscape uses 4, some exporters use 3) as well as arbitrary compound shapes
+// — diplicity-react only needs cx/cy for unit placement, so an approximation is fine.
+function pathCenter(d: string): { cx: number; cy: number; r: number } | null {
+  const xs: number[] = [];
+  const ys: number[] = [];
+
+  const mMatch = d.match(/M\s*([-\d.e]+)[,\s]+([-\d.e]+)/);
   if (!mMatch) return null;
+  xs.push(parseFloat(mMatch[1]));
+  ys.push(parseFloat(mMatch[2]));
 
-  // Collect endpoints of each absolute C command (the 5th and 6th number of each triplet)
-  const endpointXs: number[] = [parseFloat(mMatch[1])];
-  const endpointYs: number[] = [parseFloat(mMatch[2])];
-  const cRe = /C\s*[-\d.]+[,\s]+[-\d.]+[,\s]+[-\d.]+[,\s]+[-\d.]+[,\s]+([-\d.]+)[,\s]+([-\d.]+)/g;
   let m;
-  while ((m = cRe.exec(d)) !== null) {
-    endpointXs.push(parseFloat(m[1]));
-    endpointYs.push(parseFloat(m[2]));
-  }
-  if (endpointXs.length < 3) return null;
+  // Absolute C: endpoint is 5th and 6th of the six numbers per triplet
+  const cRe = /C\s*[-\d.e]+[,\s]+[-\d.e]+[,\s]+[-\d.e]+[,\s]+[-\d.e]+[,\s]+([-\d.e]+)[,\s]+([-\d.e]+)/g;
+  while ((m = cRe.exec(d)) !== null) { xs.push(parseFloat(m[1])); ys.push(parseFloat(m[2])); }
 
-  const minX = Math.min(...endpointXs), maxX = Math.max(...endpointXs);
-  const minY = Math.min(...endpointYs), maxY = Math.max(...endpointYs);
+  // Absolute L
+  const lRe = /L\s*([-\d.e]+)[,\s]+([-\d.e]+)/g;
+  while ((m = lRe.exec(d)) !== null) { xs.push(parseFloat(m[1])); ys.push(parseFloat(m[2])); }
+
+  // Absolute Q: endpoint is 3rd and 4th of four numbers
+  const qRe = /Q\s*[-\d.e]+[,\s]+[-\d.e]+[,\s]+([-\d.e]+)[,\s]+([-\d.e]+)/g;
+  while ((m = qRe.exec(d)) !== null) { xs.push(parseFloat(m[1])); ys.push(parseFloat(m[2])); }
+
+  if (xs.length === 0) return null;
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  if (!isFinite(minX)) return null;
+
   const w = maxX - minX, h = maxY - minY;
-  if (w <= 0 || h <= 0) return null;
-  if (Math.min(w, h) / Math.max(w, h) < 0.8) return null; // not circular
-
   return {
     cx: parseFloat(((minX + maxX) / 2).toFixed(3)),
     cy: parseFloat(((minY + maxY) / 2).toFixed(3)),
-    r: parseFloat(((w + h) / 4).toFixed(3)),
+    r: Math.max(parseFloat(((w + h) / 4).toFixed(3)), 1),
   };
 }
 
@@ -357,19 +367,44 @@ export function buildDsvgOutput(
       child.setAttribute("id", unitPositionCodes[svgId].toLowerCase());
     }
   }
-  // Convert path circles to <circle> elements (diplicity validator requires <circle> tags)
+  // Convert all non-circle children to <circle> (diplicity requires <circle> for unit positions).
+  // Paths are converted by sampling key endpoints for the bounding-box centre.
+  // rect/ellipse use their geometric centre directly.
   for (const child of Array.from(upLayer.children)) {
-    if (child.tagName.toLowerCase() !== "path") continue;
-    const d = child.getAttribute("d");
-    if (!d) continue;
-    const circle = pathToCircle(d);
-    if (!circle) continue;
+    const tag = child.tagName.toLowerCase();
+    if (tag === "circle") continue;
+
+    let cx: number | null = null;
+    let cy: number | null = null;
+    let r = 10;
+
+    if (tag === "path") {
+      const d = child.getAttribute("d");
+      if (!d) continue;
+      const result = pathCenter(d);
+      if (!result) continue;
+      cx = result.cx; cy = result.cy; r = result.r;
+    } else if (tag === "ellipse") {
+      cx = parseFloat(child.getAttribute("cx") ?? "0");
+      cy = parseFloat(child.getAttribute("cy") ?? "0");
+      r = parseFloat(child.getAttribute("rx") ?? child.getAttribute("ry") ?? "10");
+    } else if (tag === "rect") {
+      const x = parseFloat(child.getAttribute("x") ?? "0");
+      const y = parseFloat(child.getAttribute("y") ?? "0");
+      cx = x + parseFloat(child.getAttribute("width") ?? "0") / 2;
+      cy = y + parseFloat(child.getAttribute("height") ?? "0") / 2;
+    } else {
+      continue;
+    }
+
+    if (cx === null || cy === null) continue;
+
     const circleEl = doc.createElementNS(SVG_NS, "circle");
     const elId = child.getAttribute("id");
     if (elId) circleEl.setAttribute("id", elId);
-    circleEl.setAttribute("cx", String(circle.cx));
-    circleEl.setAttribute("cy", String(circle.cy));
-    circleEl.setAttribute("r", String(circle.r));
+    circleEl.setAttribute("cx", String(cx));
+    circleEl.setAttribute("cy", String(cy));
+    circleEl.setAttribute("r", String(r));
     const fill = child.getAttribute("fill");
     if (fill) circleEl.setAttribute("fill", fill);
     upLayer.replaceChild(circleEl, child);
