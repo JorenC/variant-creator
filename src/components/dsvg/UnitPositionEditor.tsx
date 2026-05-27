@@ -24,9 +24,9 @@ interface UnitPositionEditorProps {
   provinceAbbrs: Record<string, string>;
 }
 
-// Accepts "stp" (province) or "stp/sc" (named coast)
-const CODE_PATTERN = /^[a-zA-Z]{3}(\/[a-zA-Z]{2})?$/;
-const CODE_ERROR = 'Must be 3 letters, or "xxx/xx" for a named coast (e.g. stp/sc).';
+// Accepts "stp" (province) or "stp/river" (named coast, any length suffix)
+const CODE_PATTERN = /^[a-zA-Z]{3}(\/[a-zA-Z]+)?$/;
+const CODE_ERROR = 'Must be 3 letters, or "xxx/name" for a named coast (e.g. stp/sc or stp/river).';
 
 function validateCode(
   svgId: string,
@@ -64,6 +64,20 @@ export const UnitPositionEditor = forwardRef<
     [svgContent, assignments.unitPositions]
   );
 
+  const namedCoastCount = useMemo(
+    () =>
+      assignments.namedCoasts
+        ? extractProvinces(svgContent, assignments.namedCoasts).provinces.length
+        : 0,
+    [svgContent, assignments.namedCoasts]
+  );
+  const provinceCount = useMemo(
+    () => Object.keys(provinceAbbrs).length,
+    [provinceAbbrs]
+  );
+  const expectedCount = provinceCount + namedCoastCount;
+  const countMismatch = expectedCount > 0 && elements.length !== expectedCount;
+
   const aspectRatio = useMemo(() => {
     const parts = viewBox.split(/\s+/).map(Number);
     return parts.length >= 4 && parts[2] > 0 && parts[3] > 0
@@ -97,6 +111,7 @@ export const UnitPositionEditor = forwardRef<
     ref,
     () => ({
       validate() {
+        if (countMismatch) return null;
         const invalid = elements.filter(
           el => !CODE_PATTERN.test(codes[el.svgId] ?? "")
         );
@@ -116,7 +131,7 @@ export const UnitPositionEditor = forwardRef<
         return { ...codes };
       },
     }),
-    [codes, elements]
+    [codes, elements, countMismatch]
   );
 
   const handleCodeChange = (svgId: string, value: string) => {
@@ -186,6 +201,20 @@ export const UnitPositionEditor = forwardRef<
           Auto-detect
         </Button>
       </div>
+      {countMismatch && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>
+            {elements.length} unit position{elements.length !== 1 ? "s" : ""}{" "}
+            found, {expectedCount} expected ({provinceCount}{" "}
+            {provinceCount === 1 ? "province" : "provinces"}
+            {namedCoastCount > 0
+              ? ` + ${namedCoastCount} named ${namedCoastCount === 1 ? "coast" : "coasts"}`
+              : ""}
+            ).
+          </span>
+        </div>
+      )}
       <div className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto pr-1">
         {elements.map(({ svgId }) => {
           const error = errors[svgId];
@@ -200,7 +229,7 @@ export const UnitPositionEditor = forwardRef<
                     inputRefs.current[svgId] = el;
                   }}
                   value={codes[svgId] ?? ""}
-                  maxLength={6}
+                  maxLength={20}
                   aria-invalid={!!error}
                   onChange={e => handleCodeChange(svgId, e.target.value)}
                   onFocus={() => handleFocus(svgId)}
