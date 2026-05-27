@@ -79,7 +79,14 @@ export const UnitPositionEditor = forwardRef<
   useEffect(() => {
     const initial: Record<string, string> = {};
     elements.forEach(({ svgId }) => {
-      initial[svgId] = svgId.slice(0, 3).toLowerCase();
+      const slashIdx = svgId.indexOf("/");
+      if (slashIdx !== -1) {
+        const prefix = svgId.slice(0, slashIdx);
+        const coastPart = svgId.slice(slashIdx + 1);
+        initial[svgId] = `${prefix.slice(0, 3).toLowerCase()}/${coastPart.toLowerCase()}`;
+      } else {
+        initial[svgId] = svgId.slice(0, 3).toLowerCase();
+      }
     });
     setCodes(initial);
     setErrors({});
@@ -130,7 +137,6 @@ export const UnitPositionEditor = forwardRef<
     const error = validateCode(svgId, value, codes);
     if (error) {
       setErrors(prev => ({ ...prev, [svgId]: error }));
-      requestAnimationFrame(() => inputRefs.current[svgId]?.focus());
     } else {
       setErrors(prev => {
         const next = { ...prev };

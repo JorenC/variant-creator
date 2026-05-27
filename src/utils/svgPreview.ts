@@ -41,6 +41,8 @@ export function buildPreviewSvg(
     assignments.provinces,
     assignments.namedCoasts,
     assignments.unitPositions,
+    assignments.provinceNames,
+    assignments.borders,
   ].filter((k): k is string => k !== null);
 
   if (assignedKeys.length === 0) return svgContent;

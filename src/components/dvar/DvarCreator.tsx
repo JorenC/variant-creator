@@ -1242,6 +1242,10 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
       )}
 
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+        <div className="flex flex-col gap-1">
+        <div className="pr-2 text-right text-xs text-muted-foreground">
+          {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
+        </div>
         <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
           {defaultValues.provinces.map((province, i) => (
             <div
@@ -1348,6 +1352,7 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
             </div>
           ))}
         </div>
+        </div>
 
         <div className="sticky top-8 self-start">
           <div
@@ -1384,12 +1389,37 @@ interface HomeNationsFormProps {
 
 const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
   ({ svgContent, scProvinces, nations, defaultValues, onSubmit }, ref) => {
+    const sortedProvinces = useMemo(
+      () => [...scProvinces].sort((a, b) => a.id.localeCompare(b.id)),
+      [scProvinces]
+    );
     const [assignment, setAssignment] = useState<HomeNationsData>(defaultValues);
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
+
+    const coastErrors = useMemo((): Set<string> => {
+      if (!submitAttempted) return new Set();
+      const errors = new Set<string>();
+      for (const province of sortedProvinces) {
+        const entry = assignment[province.id];
+        if (entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast) {
+          errors.add(province.id);
+        }
+      }
+      return errors;
+    }, [submitAttempted, sortedProvinces, assignment]);
 
     useImperativeHandle(ref, () => ({
-      submit: () => onSubmit(assignment),
-    }));
+      submit: () => {
+        setSubmitAttempted(true);
+        const hasErrors = sortedProvinces.some(province => {
+          const entry = assignment[province.id];
+          return entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast;
+        });
+        if (hasErrors) return;
+        onSubmit(assignment);
+      },
+    }), [assignment, onSubmit, sortedProvinces]);
 
     const provinceColors = useMemo(() => {
       const nationColorMap: Record<string, string> = {};
@@ -1433,7 +1463,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
       ...nations.map(n => ({ value: n.id, label: n.name, color: n.color })),
     ], [nations]);
 
-    if (scProvinces.length === 0) {
+    if (sortedProvinces.length === 0) {
       return (
         <p className="text-sm text-muted-foreground">
           No supply centers defined. Go back and mark provinces as SC in the Provinces step.
@@ -1442,9 +1472,16 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
     }
 
     return (
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <div className="space-y-4">
+        {coastErrors.size > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Some fleets require a coast selection. Please select a coast for each fleet marked below.
+          </div>
+        )}
+        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
-          {scProvinces.map(province => {
+          {sortedProvinces.map(province => {
             const entry = assignment[province.id] ?? { nation: "", startingUnit: null };
             return (
               <div
@@ -1527,7 +1564,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
                         }))
                       }
                     >
-                      <SelectTrigger size="sm" className="h-6 w-auto text-xs">
+                      <SelectTrigger size="sm" className={cn("h-6 w-auto text-xs", coastErrors.has(province.id) && "border-destructive")}>
                         <SelectValue placeholder="Coast…" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1540,6 +1577,9 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
                     </Select>
                   )}
                 </div>
+                {coastErrors.has(province.id) && (
+                  <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">Select a coast for this fleet.</p>
+                )}
               </div>
             );
           })}
@@ -1558,6 +1598,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
               />
             )}
           </div>
+        </div>
         </div>
       </div>
     );

@@ -100,15 +100,17 @@ export function autoDetectUnitProvinces(
   // Build Paper.js paths per province for containment testing
   const provinceGroups: Array<{ svgId: string; paths: paper.Path[] }> = [];
   for (const child of Array.from(provLayer.children)) {
-    const id = child.getAttribute("id");
-    if (!id || !(id in provinceAbbrs)) continue;
+    // Prefer inkscape:label (Inkscape files) over id (Figma/generic files)
+    const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
+    if (!svgId || !(svgId in provinceAbbrs)) continue;
     const paths = collectPaperPaths(child);
-    if (paths.length > 0) provinceGroups.push({ svgId: id, paths });
+    if (paths.length > 0) provinceGroups.push({ svgId, paths });
   }
 
   const result: Record<string, string> = {};
   for (const child of Array.from(upLayer.children)) {
-    const id = child.getAttribute("id");
+    // Prefer inkscape:label (Inkscape files) over id (Figma/generic files)
+    const id = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
     if (!id) continue;
     const center = getElementCenter(child);
     if (!center) continue;

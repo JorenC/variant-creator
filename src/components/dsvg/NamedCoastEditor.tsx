@@ -90,14 +90,25 @@ export const NamedCoastEditor = forwardRef<
   );
 
   useEffect(() => {
+    const provinceAbbrSet = new Set(Object.values(provinceAbbrs));
     const initial: Record<string, CoastState> = {};
     coastElements.forEach(({ svgId }) => {
+      const slashIdx = svgId.indexOf("/");
+      if (slashIdx !== -1) {
+        const prefix = svgId.slice(0, slashIdx);
+        const coastPart = svgId.slice(slashIdx + 1);
+        const candidate = prefix.slice(0, 3).toLowerCase();
+        if (provinceAbbrSet.has(candidate)) {
+          initial[svgId] = { parentProvince: candidate, coastAbbr: coastPart };
+          return;
+        }
+      }
       initial[svgId] = { parentProvince: "", coastAbbr: "" };
     });
     setEntries(initial);
     setErrors({});
     setFocusedId(null);
-  }, [coastElements]);
+  }, [coastElements, provinceAbbrs]);
 
   useImperativeHandle(
     ref,

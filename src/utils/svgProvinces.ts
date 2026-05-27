@@ -125,9 +125,9 @@ export function extractProvinces(
 
   const provinces: ProvinceElement[] = [];
   getFlatProvinceChildren(el).forEach(child => {
-    const id = child.getAttribute("id");
-    if (!id) return;
-    provinces.push({ svgId: id, pathData: collectPathData(child) });
+    const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
+    if (!svgId) return;
+    provinces.push({ svgId, pathData: collectPathData(child) });
   });
 
   return { viewBox, provinces };
