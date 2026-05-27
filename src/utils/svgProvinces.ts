@@ -31,6 +31,26 @@ function shapeToPathD(el: Element): string | null {
   return null;
 }
 
+function isInkscapeSubLayer(el: Element): boolean {
+  if (el.tagName.toLowerCase() !== "g") return false;
+  return (
+    el.getAttribute("inkscape:groupmode") === "layer" ||
+    el.getAttribute("inkscape:label") !== null
+  );
+}
+
+function getFlatProvinceChildren(el: Element): Element[] {
+  const result: Element[] = [];
+  for (const child of Array.from(el.children)) {
+    if (isInkscapeSubLayer(child)) {
+      result.push(...getFlatProvinceChildren(child));
+    } else {
+      result.push(child);
+    }
+  }
+  return result;
+}
+
 function collectPathData(el: Element): string[] {
   const paths: string[] = [];
   const tag = el.tagName.toLowerCase();
@@ -104,7 +124,7 @@ export function extractProvinces(
   }
 
   const provinces: ProvinceElement[] = [];
-  Array.from(el.children).forEach(child => {
+  getFlatProvinceChildren(el).forEach(child => {
     const id = child.getAttribute("id");
     if (!id) return;
     provinces.push({ svgId: id, pathData: collectPathData(child) });

@@ -22,6 +22,26 @@ function getElementByKey(root: Element, key: string): Element | null {
   return el;
 }
 
+function flattenInkscapeSubLayers(el: Element): void {
+  const toRemove: Element[] = [];
+  for (const child of Array.from(el.children)) {
+    if (
+      child.tagName.toLowerCase() === "g" &&
+      (child.getAttribute("inkscape:groupmode") === "layer" ||
+        child.getAttribute("inkscape:label") !== null)
+    ) {
+      flattenInkscapeSubLayers(child);
+      for (const gc of Array.from(child.children)) {
+        el.insertBefore(gc, child);
+      }
+      toRemove.push(child);
+    }
+  }
+  for (const removed of toRemove) {
+    removed.parentNode?.removeChild(removed);
+  }
+}
+
 function makeLayerGroup(doc: Document, id: string): Element {
   const g = doc.createElementNS(SVG_NS, "g");
   g.setAttribute("id", id);
@@ -102,6 +122,7 @@ export function buildDsvgOutput(
   };
 
   const provincesEl = cloneByKey(assignments.provinces);
+  if (provincesEl) flattenInkscapeSubLayers(provincesEl);
   const namedCoastsEl = cloneByKey(assignments.namedCoasts);
   const unitPositionsEl = cloneByKey(assignments.unitPositions);
   const provinceNamesEl = cloneByKey(assignments.provinceNames);
