@@ -121,7 +121,7 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
           </tr>
         </thead>
         <tbody>
-          {provinces.map((province) => {
+          {[...provinces].sort((a, b) => a.id.localeCompare(b.id)).map((province) => {
             const isSelected = province.id === selectedProvinceId;
             const idError = getIdValidation(province);
             const errors = validationErrors.get(province.id) || [];

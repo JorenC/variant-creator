@@ -213,7 +213,7 @@ function buildInitialProvinces(dsvg: ParsedDsvg): ProvincesFormValues["provinces
     const existing = coastsByParent.get(parent) ?? [];
     coastsByParent.set(parent, [...existing, coastId]);
   }
-  return dsvg.provinceIds.map(id => ({
+  return [...dsvg.provinceIds].sort((a, b) => a.localeCompare(b)).map(id => ({
     id,
     name: id,
     // intentionally unselected — user must choose; Zod rejects "" on submit
@@ -745,7 +745,9 @@ export function DvarCreator() {
                 formId={provincesFormId}
                 svgContent={svgContent}
                 defaultValues={
-                  provincesData ?? { provinces: buildInitialProvinces(parsedDsvg) }
+                  provincesData
+                    ? { provinces: [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id)) }
+                    : { provinces: buildInitialProvinces(parsedDsvg) }
                 }
                 onSubmit={handleProvincesSubmit}
               />
@@ -2217,7 +2219,7 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
     }, [provinces, adjacenciesData, provinceMap]);
 
     const provincesWithSCs = useMemo(
-      () => provinces.filter(p => (borderingSCsPerProvince[p.id] ?? []).length > 0),
+      () => provinces.filter(p => (borderingSCsPerProvince[p.id] ?? []).length > 0).sort((a, b) => a.id.localeCompare(b.id)),
       [provinces, borderingSCsPerProvince]
     );
 
@@ -2691,7 +2693,7 @@ const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, VictoryCon
                   {provinces.length === 0 ? (
                     <p className="text-xs text-muted-foreground">No provinces defined.</p>
                   ) : (
-                    provinces.map(p => (
+                    [...provinces].sort((a, b) => a.id.localeCompare(b.id)).map(p => (
                       <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/40">
                         <Checkbox
                           checked={condition.provinces.includes(p.id)}

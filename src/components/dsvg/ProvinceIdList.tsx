@@ -35,7 +35,7 @@ export function ProvinceIdList({
         Province abbreviations ({provinces.length})
       </p>
       <div className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto pr-1">
-        {provinces.map(({ svgId }) => {
+        {[...provinces].sort((a, b) => a.svgId.localeCompare(b.svgId)).map(({ svgId }) => {
           const error = errors[svgId];
 
           return (

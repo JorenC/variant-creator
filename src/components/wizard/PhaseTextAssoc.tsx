@@ -304,7 +304,7 @@ export function PhaseTextAssoc() {
                               <SelectItem value="none">
                                 (none - decorative)
                               </SelectItem>
-                              {provinces.map((province) => (
+                              {[...provinces].sort((a, b) => a.id.localeCompare(b.id)).map((province) => (
                                 <SelectItem
                                   key={province.id}
                                   value={province.id}
