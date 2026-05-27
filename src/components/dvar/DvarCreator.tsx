@@ -68,6 +68,7 @@ import type { DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
 
 type Step =
   | "upload"
+  | "reconcile"
   | "basic-info"
   | "nations"
   | "provinces"
@@ -272,9 +273,274 @@ const DEFAULT_COLORS = [
   "#795548",
 ];
 
+// ─── Reconcile helpers ────────────────────────────────────────────────────────
+
+type ReconcileMap = Record<string, string | null>;
+
+interface ReconcileMismatches {
+  missingProvinces: string[];
+  missingCoasts: string[];
+  newProvinces: string[];
+  newCoasts: string[];
+}
+
+function computeMismatches(dvar: DvarJson, dsvg: ParsedDsvg): ReconcileMismatches {
+  const dvarProvinceIds = new Set((dvar.provinces ?? []).map(p => p.id));
+  const dvarCoastIds = new Set((dvar.namedCoasts ?? []).map(c => c.id));
+  const dsvgProvinceIds = new Set(dsvg.provinceIds);
+  const dsvgCoastIds = new Set(dsvg.namedCoastIds);
+  return {
+    missingProvinces: [...dvarProvinceIds].filter(id => !dsvgProvinceIds.has(id)),
+    missingCoasts: [...dvarCoastIds].filter(id => !dsvgCoastIds.has(id)),
+    newProvinces: [...dsvgProvinceIds].filter(id => !dvarProvinceIds.has(id)),
+    newCoasts: [...dsvgCoastIds].filter(id => !dvarCoastIds.has(id)),
+  };
+}
+
+function applyIdRemapping(
+  dvar: DvarJson,
+  provinceMap: ReconcileMap,
+  coastMap: ReconcileMap,
+): DvarJson {
+  const remapProvince = (id: string): string | null =>
+    id in provinceMap ? provinceMap[id] : id;
+  const remapCoast = (id: string): string | null =>
+    id in coastMap ? coastMap[id] : id;
+  const remapAdjTo = (to: string): string | null => {
+    if (to in coastMap) return coastMap[to];
+    if (to in provinceMap) return provinceMap[to];
+    return to;
+  };
+  const remapLocation = (loc: string): string | null =>
+    loc.includes("/") ? remapCoast(loc) : remapProvince(loc);
+
+  const provinces = (dvar.provinces ?? [])
+    .map(p => {
+      const newId = remapProvince(p.id);
+      if (newId === null) return null;
+      return {
+        ...p,
+        id: newId,
+        adjacencies: p.adjacencies
+          .map(a => { const t = remapAdjTo(a.to); return t === null ? null : { ...a, to: t }; })
+          .filter((a): a is DvarJsonAdjacency => a !== null),
+      };
+    })
+    .filter((p): p is DvarJsonProvince => p !== null);
+
+  const namedCoasts = (dvar.namedCoasts ?? [])
+    .map(c => {
+      const newId = remapCoast(c.id);
+      if (newId === null) return null;
+      const newParent = remapProvince(c.parentProvince);
+      if (newParent === null) return null;
+      return {
+        ...c,
+        id: newId,
+        parentProvince: newParent,
+        adjacencies: c.adjacencies
+          .map(a => { const t = remapAdjTo(a.to); return t === null ? null : { ...a, to: t }; })
+          .filter((a): a is DvarJsonAdjacency => a !== null),
+      };
+    })
+    .filter((c): c is DvarJsonNamedCoast => c !== null);
+
+  const supplyCenters = (dvar.initialState?.supplyCenters ?? [])
+    .map(sc => { const p = remapProvince(sc.province); return p === null ? null : { ...sc, province: p }; })
+    .filter((sc): sc is DvarJsonSupplyCenter => sc !== null);
+
+  const units = (dvar.initialState?.units ?? [])
+    .map(u => { const l = remapLocation(u.location); return l === null ? null : { ...u, location: l }; })
+    .filter((u): u is DvarJsonUnit => u !== null);
+
+  const dominanceRules = (dvar.dominanceRules ?? [])
+    .map(rule => {
+      const p = remapProvince(rule.province);
+      if (p === null) return null;
+      const dependencies = rule.dependencies
+        .map(dep => { const d = remapProvince(dep.province); return d === null ? null : { ...dep, province: d }; })
+        .filter((d): d is { province: string; nation: string } => d !== null);
+      return { ...rule, province: p, dependencies };
+    })
+    .filter((r): r is DvarJsonDomRule => r !== null);
+
+  const victoryConditions = (dvar.victoryConditions ?? []).map(vc => {
+    if (vc.type !== "province-control") return vc;
+    return {
+      ...vc,
+      provinces: vc.provinces
+        .map(id => remapProvince(id))
+        .filter((id): id is string => id !== null),
+    };
+  });
+
+  return {
+    ...dvar,
+    provinces,
+    namedCoasts,
+    dominanceRules,
+    victoryConditions,
+    initialState: dvar.initialState
+      ? { ...dvar.initialState, supplyCenters, units }
+      : undefined,
+  };
+}
+
+// ─── ReconcileStep component ──────────────────────────────────────────────────
+
+interface ReconcileStepProps {
+  mismatches: ReconcileMismatches;
+  provinceMap: ReconcileMap;
+  coastMap: ReconcileMap;
+  onProvinceMapChange: (map: ReconcileMap) => void;
+  onCoastMapChange: (map: ReconcileMap) => void;
+}
+
+function ReconcileStep({
+  mismatches,
+  provinceMap,
+  coastMap,
+  onProvinceMapChange,
+  onCoastMapChange,
+}: ReconcileStepProps) {
+  const claimedProvince = new Set(
+    Object.values(provinceMap).filter((v): v is string => v !== null)
+  );
+  const claimedCoast = new Set(
+    Object.values(coastMap).filter((v): v is string => v !== null)
+  );
+
+  const unclaimedProvinces = mismatches.newProvinces.filter(id => !claimedProvince.has(id));
+  const unclaimedCoasts = mismatches.newCoasts.filter(id => !claimedCoast.has(id));
+
+  const setProvinceMapping = (oldId: string, newId: string | null) =>
+    onProvinceMapChange({ ...provinceMap, [oldId]: newId });
+  const setCoastMapping = (oldId: string, newId: string | null) =>
+    onCoastMapChange({ ...coastMap, [oldId]: newId });
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="space-y-1">
+          <p className="font-medium text-amber-900 dark:text-amber-200">ID mismatches detected</p>
+          <p className="text-amber-800 dark:text-amber-300">
+            Some province or coast IDs in your dVAR do not exist in the uploaded dSVG. Map each
+            old ID to its replacement, or leave it as "Drop" to discard its dVAR data.
+          </p>
+        </div>
+      </div>
+
+      {mismatches.missingProvinces.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-sm font-semibold">Provinces</p>
+          <div className="space-y-2">
+            {mismatches.missingProvinces.map(oldId => {
+              const current = provinceMap[oldId];
+              const available = mismatches.newProvinces.filter(
+                id => !claimedProvince.has(id) || id === current
+              );
+              return (
+                <div key={oldId} className="flex items-center gap-3">
+                  <span className="w-40 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                    {oldId}
+                  </span>
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <Select
+                    value={current ?? "__drop__"}
+                    onValueChange={val => setProvinceMapping(oldId, val === "__drop__" ? null : val)}
+                  >
+                    <SelectTrigger className="h-8 w-52 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__drop__">
+                        <span className="italic text-muted-foreground">Drop (discard data)</span>
+                      </SelectItem>
+                      {available.map(newId => (
+                        <SelectItem key={newId} value={newId}>{newId}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {mismatches.missingCoasts.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-sm font-semibold">Named Coasts</p>
+          <div className="space-y-2">
+            {mismatches.missingCoasts.map(oldId => {
+              const current = coastMap[oldId];
+              const available = mismatches.newCoasts.filter(
+                id => !claimedCoast.has(id) || id === current
+              );
+              return (
+                <div key={oldId} className="flex items-center gap-3">
+                  <span className="w-40 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                    {oldId}
+                  </span>
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <Select
+                    value={current ?? "__drop__"}
+                    onValueChange={val => setCoastMapping(oldId, val === "__drop__" ? null : val)}
+                  >
+                    <SelectTrigger className="h-8 w-52 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__drop__">
+                        <span className="italic text-muted-foreground">Drop (discard data)</span>
+                      </SelectItem>
+                      {available.map(newId => (
+                        <SelectItem key={newId} value={newId}>{newId}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(unclaimedProvinces.length > 0 || unclaimedCoasts.length > 0) && (
+        <div className="space-y-2 rounded-lg border bg-muted/40 px-4 py-3">
+          <p className="text-sm font-medium">New in dSVG — will be added as blanks</p>
+          <p className="text-xs text-muted-foreground">
+            These IDs exist in the dSVG but aren't mapped to any dVAR entry. They'll be added
+            with empty data for you to fill in during the Provinces step.
+          </p>
+          {unclaimedProvinces.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {unclaimedProvinces.map(id => (
+                <span key={id} className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs">
+                  {id}
+                </span>
+              ))}
+            </div>
+          )}
+          {unclaimedCoasts.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {unclaimedCoasts.map(id => (
+                <span key={id} className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                  {id}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Root component ────────────────────────────────────────────────────────────
 
-const STEP_META: Record<Exclude<Step, "upload">, { title: string; subtitle: string }> = {
+const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; subtitle: string }> = {
   "basic-info": {
     title: "Basic Info",
     subtitle: "Set the identity and metadata for your variant.",
@@ -340,6 +606,9 @@ export function DvarCreator() {
   const [pendingDvar, setPendingDvar] = useState<DvarJson | null>(null);
   const [pendingDvarFileName, setPendingDvarFileName] = useState<string | null>(null);
   const [dvarError, setDvarError] = useState<string | null>(null);
+  const [reconcileMismatches, setReconcileMismatches] = useState<ReconcileMismatches | null>(null);
+  const [provinceReconcileMap, setProvinceReconcileMap] = useState<ReconcileMap>({});
+  const [coastReconcileMap, setCoastReconcileMap] = useState<ReconcileMap>({});
   const homeNationsRef = useRef<HomeNationsFormHandle>(null);
   const adjacenciesRef = useRef<AdjacenciesFormHandle>(null);
   const dominanceRulesRef = useRef<DominanceRulesFormHandle>(null);
@@ -479,7 +748,70 @@ export function DvarCreator() {
     setSvgContent(content);
     const parsed = parseDsvg(content);
     setParsedDsvgState(parsed);
-    if (pendingDvar) applyDvarPreFill(pendingDvar);
+
+    if (pendingDvar) {
+      const mismatches = computeMismatches(pendingDvar, parsed);
+      if (mismatches.missingProvinces.length > 0 || mismatches.missingCoasts.length > 0) {
+        const initProvinceMap: ReconcileMap = {};
+        for (const id of mismatches.missingProvinces) initProvinceMap[id] = null;
+        const initCoastMap: ReconcileMap = {};
+        for (const id of mismatches.missingCoasts) initCoastMap[id] = null;
+        setReconcileMismatches(mismatches);
+        setProvinceReconcileMap(initProvinceMap);
+        setCoastReconcileMap(initCoastMap);
+        setStep("reconcile");
+      } else {
+        applyDvarPreFill(pendingDvar);
+        setStep("basic-info");
+      }
+    } else {
+      setStep("basic-info");
+    }
+  };
+
+  const handleReconcileConfirm = () => {
+    if (!pendingDvar || !reconcileMismatches) return;
+
+    const remapped = applyIdRemapping(pendingDvar, provinceReconcileMap, coastReconcileMap);
+
+    const claimedProvinces = new Set(
+      Object.values(provinceReconcileMap).filter((v): v is string => v !== null)
+    );
+    const claimedCoasts = new Set(
+      Object.values(coastReconcileMap).filter((v): v is string => v !== null)
+    );
+
+    const brandNewProvinces = reconcileMismatches.newProvinces.filter(
+      id => !claimedProvinces.has(id)
+    );
+    const brandNewCoasts = reconcileMismatches.newCoasts.filter(
+      id => !claimedCoasts.has(id)
+    );
+
+    const augmented: DvarJson = {
+      ...remapped,
+      provinces: [
+        ...(remapped.provinces ?? []),
+        ...brandNewProvinces.map(id => ({
+          id,
+          name: id,
+          type: "land",
+          supplyCenter: false,
+          adjacencies: [],
+        })),
+      ],
+      namedCoasts: [
+        ...(remapped.namedCoasts ?? []),
+        ...brandNewCoasts.map(id => ({
+          id,
+          name: id,
+          parentProvince: id.split("/")[0],
+          adjacencies: [],
+        })),
+      ],
+    };
+
+    applyDvarPreFill(augmented);
     setStep("basic-info");
   };
 
@@ -514,9 +846,13 @@ export function DvarCreator() {
     setPendingDvarFileName(null);
     setDvarError(null);
     if (dvarInputRef.current) dvarInputRef.current.value = "";
+    setReconcileMismatches(null);
+    setProvinceReconcileMap({});
+    setCoastReconcileMap({});
   };
 
   const handleBack = () => {
+    if (step === "reconcile") handleClear();
     if (step === "basic-info") handleClear();
     if (step === "nations") setStep("basic-info");
     if (step === "provinces") setStep("nations");
@@ -694,15 +1030,54 @@ export function DvarCreator() {
               </div>
             </div>
           </>
+        ) : step === "reconcile" ? (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold">Reconcile IDs</h1>
+                <p className="mt-1 text-muted-foreground">
+                  Map dVAR IDs that are missing from the uploaded dSVG to their new equivalents.
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3 pt-1">
+                <span className="text-sm text-muted-foreground">{fileName}</span>
+                <Button variant="ghost" size="sm" onClick={handleClear}>
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {reconcileMismatches && (
+              <ReconcileStep
+                mismatches={reconcileMismatches}
+                provinceMap={provinceReconcileMap}
+                coastMap={coastReconcileMap}
+                onProvinceMapChange={setProvinceReconcileMap}
+                onCoastMapChange={setCoastReconcileMap}
+              />
+            )}
+
+            <div className="flex justify-between pt-2">
+              <Button variant="outline" onClick={handleBack}>
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <Button onClick={handleReconcileConfirm}>
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
         ) : (
           <>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold">
-                  {STEP_META[step as Exclude<Step, "upload">].title}
+                  {STEP_META[step as Exclude<Step, "upload" | "reconcile">].title}
                 </h1>
                 <p className="mt-1 text-muted-foreground">
-                  {STEP_META[step as Exclude<Step, "upload">].subtitle}
+                  {STEP_META[step as Exclude<Step, "upload" | "reconcile">].subtitle}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-3 pt-1">
