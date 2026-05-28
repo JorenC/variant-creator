@@ -236,7 +236,7 @@ interface DvarJsonProvince { id: string; name: string; type: string; supplyCente
 interface DvarJsonUnit { nation: string; type: string; location: string; }
 interface DvarJsonSupplyCenter { nation: string; province: string; }
 interface DvarJsonPhaseTransition { from: { season: string; type: string }; to: { season: string; type: string; yearDelta: number }; }
-interface DvarJsonDomRule { province: string; nation: string; priority: number; dependencies: Array<{ province: string; nation: string }>; }
+interface DvarJsonDomRule { province: string; nation: string; dependencies: Array<{ province: string; nation: string }>; }
 
 interface DvarJson {
   id?: string;
@@ -3241,10 +3241,9 @@ function assembleDvar({
 
   const dominanceRules = Object.entries(dominanceRulesData)
     .filter(([, e]) => e.enabled && e.provinceOccupier && e.provinceOccupier !== "empty")
-    .map(([provinceId, e], i) => ({
+    .map(([provinceId, e]) => ({
       province: provinceId,
       nation: e.provinceOccupier,
-      priority: i + 1,
       dependencies: Object.entries(e.conditions)
         .map(([depProvince, nation]) => ({
           province: depProvince,
