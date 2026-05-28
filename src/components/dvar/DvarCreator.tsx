@@ -706,7 +706,7 @@ export function DvarCreator() {
         baseDR[rule.province].provinceOccupier = rule.nation === "Neutral" ? "neutral" : rule.nation;
       }
       for (const dep of rule.dependencies) {
-        baseDR[rule.province].conditions[dep.province] = dep.nation === "Neutral" ? "neutral" : dep.nation;
+        baseDR[rule.province].conditions[dep.province] = dep.nation === "Neutral" ? "neutral" : dep.nation === "Empty" ? "empty" : dep.nation;
       }
     }
     setDominanceRulesData(baseDR);
@@ -3246,10 +3246,9 @@ function assembleDvar({
       nation: e.provinceOccupier,
       priority: i + 1,
       dependencies: Object.entries(e.conditions)
-        .filter(([, nation]) => nation !== "empty")
         .map(([depProvince, nation]) => ({
           province: depProvince,
-          nation: nation === "neutral" ? "Neutral" : nation,
+          nation: nation === "neutral" ? "Neutral" : nation === "empty" ? "Empty" : nation,
         })),
     }));
 
