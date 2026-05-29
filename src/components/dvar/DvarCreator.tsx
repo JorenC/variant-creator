@@ -193,16 +193,15 @@ function buildInitialDominanceRules(
   const scSet = new Set(provinces.filter(p => p.supplyCenter).map(p => p.id));
   const result: DominanceRulesData = {};
   for (const province of provinces) {
+    if (province.supplyCenter) continue;
     const scIds = (adjacenciesData[province.id] ?? [])
       .map(a => a.to)
       .filter(id => scSet.has(id));
-    if (scIds.length > 0) {
-      result[province.id] = {
-        enabled: false,
-        provinceOccupier: "empty",
-        conditions: Object.fromEntries(scIds.map(scId => [scId, "empty"])),
-      };
-    }
+    result[province.id] = {
+      enabled: false,
+      provinceOccupier: "empty",
+      conditions: Object.fromEntries(scIds.map(scId => [scId, "empty"])),
+    };
   }
   return result;
 }
@@ -2558,8 +2557,21 @@ interface DominanceRulesFormProps {
 
 const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFormProps>(
   ({ svgContent, provinces, nations, homeNationsData, adjacenciesData, defaultValues, onSubmit }, ref) => {
-    const [rulesData, setRulesData] = useState<DominanceRulesData>(defaultValues);
+    const [rulesData, setRulesData] = useState<DominanceRulesData>(() => {
+      const normalized: DominanceRulesData = {};
+      for (const [id, entry] of Object.entries(defaultValues)) {
+        normalized[id] = {
+          ...entry,
+          provinceOccupier: entry.provinceOccupier || "empty",
+          conditions: Object.fromEntries(
+            Object.entries(entry.conditions).map(([k, v]) => [k, v || "empty"])
+          ),
+        };
+      }
+      return normalized;
+    });
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+    const [addScDialogProvince, setAddScDialogProvince] = useState<string | null>(null);
 
     useImperativeHandle(ref, () => ({ submit: () => onSubmit(rulesData) }));
 
@@ -2593,9 +2605,14 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
       return result;
     }, [provinces, adjacenciesData, provinceMap]);
 
-    const provincesWithSCs = useMemo(
-      () => provinces.filter(p => (borderingSCsPerProvince[p.id] ?? []).length > 0).sort((a, b) => a.id.localeCompare(b.id)),
-      [provinces, borderingSCsPerProvince]
+    const nonScProvinces = useMemo(
+      () => provinces.filter(p => !p.supplyCenter).sort((a, b) => a.id.localeCompare(b.id)),
+      [provinces]
+    );
+
+    const allSCs = useMemo(
+      () => provinces.filter(p => p.supplyCenter).sort((a, b) => a.id.localeCompare(b.id)),
+      [provinces]
     );
 
     const provinceColors = useMemo(() => {
@@ -2629,10 +2646,18 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
     };
 
     const setEnabled = (provinceId: string, enabled: boolean) => {
-      setRulesData(prev => ({
-        ...prev,
-        [provinceId]: { ...prev[provinceId], enabled },
-      }));
+      setRulesData(prev => {
+        const existing = prev[provinceId] ?? { provinceOccupier: "empty", conditions: {} };
+        let conditions = existing.conditions;
+        if (enabled) {
+          const adjacent = borderingSCsPerProvince[provinceId] ?? [];
+          const missing = Object.fromEntries(
+            adjacent.filter(scId => !(scId in conditions)).map(scId => [scId, "empty"])
+          );
+          if (Object.keys(missing).length > 0) conditions = { ...conditions, ...missing };
+        }
+        return { ...prev, [provinceId]: { ...existing, conditions, enabled } };
+      });
     };
 
     const setProvinceOccupier = (provinceId: string, value: string) => {
@@ -2648,6 +2673,27 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
         [provinceId]: {
           ...prev[provinceId],
           conditions: { ...prev[provinceId]?.conditions, [scId]: value },
+        },
+      }));
+    };
+
+    const removeCondition = (provinceId: string, scId: string) => {
+      setRulesData(prev => {
+        const entry = prev[provinceId];
+        if (!entry) return prev;
+        const conditions = Object.fromEntries(
+          Object.entries(entry.conditions).filter(([k]) => k !== scId)
+        );
+        return { ...prev, [provinceId]: { ...entry, conditions } };
+      });
+    };
+
+    const addCondition = (provinceId: string, scId: string) => {
+      setRulesData(prev => ({
+        ...prev,
+        [provinceId]: {
+          ...(prev[provinceId] ?? { enabled: false, provinceOccupier: "empty", conditions: {} }),
+          conditions: { ...(prev[provinceId]?.conditions ?? {}), [scId]: "empty" },
         },
       }));
     };
@@ -2682,108 +2728,175 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
     );
 
     return (
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
-          {provincesWithSCs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No provinces border a supply center.</p>
-          ) : (
-            provincesWithSCs.map(province => {
-              const entry = rulesData[province.id];
-              const isEnabled = entry?.enabled ?? false;
-              const borderingSCs = borderingSCsPerProvince[province.id] ?? [];
+      <>
+        <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+          <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
+            {nonScProvinces.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No non-SC provinces found.</p>
+            ) : (
+              nonScProvinces.map(province => {
+                const entry = rulesData[province.id];
+                const isEnabled = entry?.enabled ?? false;
+                const conditionSCIds = Object.keys(entry?.conditions ?? {});
+                const availableSCsToAdd = allSCs.filter(sc => !(sc.id in (entry?.conditions ?? {})));
 
-              return (
-                <div
-                  key={province.id}
-                  onMouseEnter={() => setHoveredId(province.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  className={cn(
-                    "rounded-md border p-2.5 transition-colors",
-                    hoveredId === province.id
-                      ? "bg-yellow-50 dark:bg-yellow-950/30"
-                      : "hover:bg-muted/30"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={`dr-${province.id}`}
-                      checked={isEnabled}
-                      onCheckedChange={checked => setEnabled(province.id, !!checked)}
-                    />
-                    <label
-                      htmlFor={`dr-${province.id}`}
-                      className="cursor-pointer text-sm font-medium"
-                    >
-                      {province.name}
-                    </label>
-                    {!isEnabled && (
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {borderingSCs.length} adjacent SC{borderingSCs.length !== 1 ? "s" : ""}
-                      </span>
+                return (
+                  <div
+                    key={province.id}
+                    onMouseEnter={() => setHoveredId(province.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    className={cn(
+                      "rounded-md border p-2.5 transition-colors",
+                      hoveredId === province.id
+                        ? "bg-yellow-50 dark:bg-yellow-950/30"
+                        : "hover:bg-muted/30"
                     )}
-                  </div>
-
-                  {isEnabled && (
-                    <div className="ml-6 mt-2 space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="w-24 shrink-0 text-xs text-muted-foreground">
-                          province owned by
+                  >
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`dr-${province.id}`}
+                        checked={isEnabled}
+                        onCheckedChange={checked => setEnabled(province.id, !!checked)}
+                      />
+                      <label
+                        htmlFor={`dr-${province.id}`}
+                        className="cursor-pointer text-sm font-medium"
+                      >
+                        {province.name}
+                      </label>
+                      {!isEnabled && conditionSCIds.length > 0 && (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {conditionSCIds.length} SC{conditionSCIds.length !== 1 ? "s" : ""}
                         </span>
-                        <NationSelect
-                          value={entry?.provinceOccupier ?? "empty"}
-                          onValueChange={val => setProvinceOccupier(province.id, val)}
-                        />
-                      </div>
-
-                      {borderingSCs.length > 0 && (
-                        <p className="text-xs text-muted-foreground">if:</p>
                       )}
+                    </div>
 
-                      {borderingSCs.map(scId => (
-                        <div key={scId} className="flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: getScColor(scId) }}
-                          />
-                          <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
-                            {getName(scId)}
+                    {isEnabled && (
+                      <div className="ml-6 mt-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-24 shrink-0 text-xs text-muted-foreground">
+                            province owned by
                           </span>
                           <NationSelect
-                            value={entry?.conditions[scId] ?? "empty"}
-                            onValueChange={val => setCondition(province.id, scId, val)}
+                            value={entry?.provinceOccupier ?? "empty"}
+                            onValueChange={val => setProvinceOccupier(province.id, val)}
                           />
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
 
-        <div className="sticky top-8 self-start">
-          <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
-            {basePreviewUrl && (
-              <img src={basePreviewUrl} alt="Map" className="absolute inset-0 h-full w-full" />
+                        {conditionSCIds.length > 0 && (
+                          <p className="text-xs text-muted-foreground">if:</p>
+                        )}
+
+                        {conditionSCIds.map(scId => (
+                          <div key={scId} className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: getScColor(scId) }}
+                            />
+                            <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
+                              {getName(scId)}
+                            </span>
+                            <NationSelect
+                              value={entry?.conditions[scId] ?? "empty"}
+                              onValueChange={val => setCondition(province.id, scId, val)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeCondition(province.id, scId)}
+                              className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                              aria-label={`Remove ${getName(scId)}`}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {availableSCsToAdd.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setAddScDialogProvince(province.id)}
+                            className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add SC dependency
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
-            <svg
-              viewBox={viewBox}
-              className="absolute inset-0 h-full w-full"
-              style={{ pointerEvents: "none" }}
-            >
-              {hoveredId &&
-                shapes
-                  .filter(s => s.id === hoveredId)
-                  .map(shape =>
-                    shape.paths.map((d, i) => (
-                      <path key={i} d={d} fill="#fde047" fillOpacity={0.5} />
-                    ))
-                  )}
-            </svg>
+          </div>
+
+          <div className="sticky top-8 self-start">
+            <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+              {basePreviewUrl && (
+                <img src={basePreviewUrl} alt="Map" className="absolute inset-0 h-full w-full" />
+              )}
+              <svg
+                viewBox={viewBox}
+                className="absolute inset-0 h-full w-full"
+                style={{ pointerEvents: "none" }}
+              >
+                {hoveredId &&
+                  shapes
+                    .filter(s => s.id === hoveredId)
+                    .map(shape =>
+                      shape.paths.map((d, i) => (
+                        <path key={i} d={d} fill="#fde047" fillOpacity={0.5} />
+                      ))
+                    )}
+              </svg>
+            </div>
           </div>
         </div>
-      </div>
+
+        <Dialog
+          open={addScDialogProvince !== null}
+          onOpenChange={open => { if (!open) setAddScDialogProvince(null); }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add SC Dependency</DialogTitle>
+              {addScDialogProvince && (
+                <DialogDescription>
+                  Choose a supply center to add as a condition for{" "}
+                  <strong>{provinces.find(p => p.id === addScDialogProvince)?.name ?? addScDialogProvince}</strong>.
+                </DialogDescription>
+              )}
+            </DialogHeader>
+            {addScDialogProvince && (() => {
+              const currentConditions = rulesData[addScDialogProvince]?.conditions ?? {};
+              const available = allSCs.filter(sc => !(sc.id in currentConditions));
+              return available.length === 0 ? (
+                <p className="text-sm text-muted-foreground">All supply centers are already added.</p>
+              ) : (
+                <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                  {available.map(sc => (
+                    <button
+                      key={sc.id}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => {
+                        addCondition(addScDialogProvince, sc.id);
+                        setAddScDialogProvince(null);
+                      }}
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: getScColor(sc.id) }}
+                      />
+                      <span>{sc.name}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">{sc.id}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 );
