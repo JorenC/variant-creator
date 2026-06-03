@@ -23,21 +23,6 @@ function isTranslateOnly(m: Matrix): boolean {
   );
 }
 
-// True when the matrix is a pure rotation (no translation, no scale/shear)
-function isPureRotation(m: Matrix): boolean {
-  return (
-    Math.abs(m[4]) < 1e-6 && Math.abs(m[5]) < 1e-6 &&
-    Math.abs(m[0] * m[0] + m[1] * m[1] - 1) < 1e-6 &&
-    Math.abs(m[0] - m[3]) < 1e-6 &&
-    Math.abs(m[1] + m[2]) < 1e-6
-  );
-}
-
-// Inverse of a pure rotation matrix: transpose the rotation part
-function invertPureRotation(m: Matrix): Matrix {
-  return [m[0], -m[1], -m[2], m[3], 0, 0];
-}
-
 // compose: apply A then B  →  C = A × B
 function multiply(a: Matrix, b: Matrix): Matrix {
   return [
@@ -430,20 +415,20 @@ function applyTspans(text: Element, m: Matrix): void {
 function resolveTextElement(text: Element, ancestorMatrix: Matrix): void {
   const transformAttr = text.getAttribute("transform");
   const ownMatrix = transformAttr ? parseTransformAttr(transformAttr) : identity();
+  const total = isIdentity(ownMatrix) ? ancestorMatrix : multiply(ancestorMatrix, ownMatrix);
 
-  if (!isIdentity(ownMatrix) && isPureRotation(ownMatrix)) {
-    // Compute ancestor's effect in the rotated local frame: M = R⁻¹ × A × R
-    const R_inv = invertPureRotation(ownMatrix);
-    const localM = multiply(multiply(R_inv, ancestorMatrix), ownMatrix);
-    applyTspans(text, localM);
-    // Keep transform="rotate(α)" — do not removeAttribute
-  } else {
-    // No rotation: apply full accumulated matrix, remove transform
-    const total = isIdentity(ownMatrix)
-      ? ancestorMatrix
-      : multiply(ancestorMatrix, ownMatrix);
+  if (isIdentity(total)) {
+    text.removeAttribute("transform");
+  } else if (isTranslateOnly(total)) {
+    // Pure translation — bake into x/y and drop the transform attribute
     applyTspans(text, total);
-    if (transformAttr) text.removeAttribute("transform");
+    text.removeAttribute("transform");
+  } else {
+    // Has rotation or scale — write the composed matrix back as the transform.
+    // This covers rotate(α), rotate(α,cx,cy), and matrix(…) transforms; all
+    // render identically to the original SVG.
+    const [a, b, c, d, e, f] = total;
+    text.setAttribute("transform", `matrix(${fmt(a)},${fmt(b)},${fmt(c)},${fmt(d)},${fmt(e)},${fmt(f)})`);
   }
   // Never recurse into tspan via the standard path — handled above
 }
