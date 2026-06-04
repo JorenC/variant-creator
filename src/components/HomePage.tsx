@@ -64,8 +64,11 @@ export function HomePage() {
             <Button size="sm" variant="ghost" onClick={() => navigate("/dsvg-creator")}>
               dSVG Creator
             </Button>
-            <Button size="sm" onClick={() => navigate("/dvar-creator")}>
+            <Button size="sm" variant="ghost" onClick={() => navigate("/dvar-creator")}>
               dVAR Creator
+            </Button>
+            <Button size="sm" onClick={() => navigate("/upload-diplicity")}>
+              Upload
             </Button>
           </>
         }
@@ -291,9 +294,13 @@ export function HomePage() {
               <span className="font-mono text-xs">.dvar</span> files to the Diplicity
               platform so other players can join and play your custom variant.
             </p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Content coming soon.
-            </p>
+            <Button
+              className="mt-5"
+              onClick={() => navigate("/upload-diplicity")}
+            >
+              Upload to Diplicity
+              <ArrowRight className="h-4 w-4" />
+            </Button>
           </GuideSection>
 
         </div>

@@ -6,6 +6,7 @@ import { StyleMapPage } from "@/components/StyleMapPage";
 import { LandingPage } from "@/components/LandingPage";
 import { DSvgCreator } from "@/components/dsvg/DSvgCreator";
 import { DvarCreator } from "@/components/dvar/DvarCreator";
+import { UploadDiplicityPage } from "@/components/UploadDiplicityPage";
 import { WizardLayout } from "@/components/wizard/WizardLayout";
 import { PhaseSetup } from "@/components/wizard/PhaseSetup";
 import { PhaseProvinces } from "@/components/wizard/PhaseProvinces";
@@ -59,6 +60,10 @@ export const router = createBrowserRouter([
   {
     path: "/dvar-creator",
     element: <DvarCreator />,
+  },
+  {
+    path: "/upload-diplicity",
+    element: <UploadDiplicityPage />,
   },
   {
     path: "/phase",

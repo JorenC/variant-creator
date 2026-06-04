@@ -10,6 +10,7 @@ import {
 import { useForm, useFieldArray, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useNavigate } from "react-router-dom";
 import { AppHeader } from "@/components/common/AppHeader";
 import {
   Upload,
@@ -82,8 +83,7 @@ type Step =
   | "phase-progression"
   | "victory-conditions"
   | "adjudication-modifiers"
-  | "export"
-  | "upload-diplicity";
+  | "export";
 
 type HomeNationsData = Record<string, { nation: string; startingUnit: "army" | "fleet" | null; startingCoast: string | null }>;
 
@@ -569,7 +569,6 @@ const DVAR_STEPS = [
   { key: "victory-conditions",      label: "Victory"       },
   { key: "adjudication-modifiers",  label: "Rules"         },
   { key: "export",                  label: "Export"        },
-  { key: "upload-diplicity",        label: "Upload"        },
 ];
 
 const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; subtitle: string }> = {
@@ -616,10 +615,6 @@ const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; 
   export: {
     title: "Review & Export",
     subtitle: "Check your variant settings and download the .dvar file.",
-  },
-  "upload-diplicity": {
-    title: "Upload to Diplicity",
-    subtitle: "Upload your variant files to Diplicity.",
   },
 };
 
@@ -904,7 +899,6 @@ export function DvarCreator() {
     if (step === "victory-conditions") setStep("phase-progression");
     if (step === "adjudication-modifiers") setStep("victory-conditions");
     if (step === "export") setStep("adjudication-modifiers");
-    if (step === "upload-diplicity") setStep("export");
   };
 
   const handleBasicInfoSubmit = (values: BasicInfoValues) => {
@@ -1323,10 +1317,6 @@ export function DvarCreator() {
               />
             )}
 
-            {step === "upload-diplicity" && (
-              <UploadDiplicityStep />
-            )}
-
             {step === "export" && basicInfo && nations && provincesData && homeNationsData && adjacenciesData && dominanceRulesData && phaseProgressionData && victoryConditionsData && (
               <ExportStep
                 basicInfo={basicInfo}
@@ -1353,13 +1343,8 @@ export function DvarCreator() {
                   Save progress
                 </Button>
 
-                {step !== "upload-diplicity" && (
-                  step === "export" ? (
-                    <Button onClick={() => setStep("upload-diplicity")}>
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  ) : step === "home-nations" ? (
+                {step !== "export" && (
+                  step === "home-nations" ? (
                     <Button onClick={() => homeNationsRef.current?.submit()}>
                       Next
                       <ChevronRight className="h-4 w-4" />
@@ -3715,6 +3700,7 @@ function assembleDvar({
 
 function ExportStep(props: ExportStepProps) {
   const { basicInfo, nations, provincesData, homeNationsData, phaseProgressionData, victoryConditionsData, dominanceRulesData } = props;
+  const navigate = useNavigate();
 
   const scCount = provincesData.provinces.filter(p => p.supplyCenter).length;
   const namedCoastCount = provincesData.provinces.reduce((n, p) => n + p.namedCoasts.length, 0);
@@ -3821,21 +3807,18 @@ function ExportStep(props: ExportStepProps) {
 
       </div>
 
-      <Button size="lg" onClick={handleDownload} className="w-full sm:w-auto">
-        <Download className="h-4 w-4" />
-        Download {basicInfo.id}.dvar
-      </Button>
+      <div className="flex flex-wrap gap-3">
+        <Button size="lg" onClick={handleDownload} className="w-full sm:w-auto">
+          <Download className="h-4 w-4" />
+          Download {basicInfo.id}.dvar
+        </Button>
+        <Button size="lg" variant="outline" onClick={() => navigate("/upload-diplicity")}>
+          Continue to Upload to Diplicity
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }
 
-// ─── UploadDiplicityStep ──────────────────────────────────────────────────────
-
-function UploadDiplicityStep() {
-  return (
-    <p className="text-sm text-muted-foreground">
-      Upload functionality coming soon.
-    </p>
-  );
-}
 
