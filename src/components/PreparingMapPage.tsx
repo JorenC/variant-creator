@@ -156,23 +156,19 @@ export function PreparingMapPage() {
             centres, and so on.
           </p>
 
-          <div className="my-2 overflow-hidden rounded-xl border shadow-sm">
+          <div className="my-2 flex gap-5 rounded-xl border p-4 shadow-sm">
             <img
               src="/guide/layers.png"
               alt="Layer panel showing names, borders, and background layers stacked in software"
-              className="w-full"
+              className="w-32 shrink-0 self-start rounded-lg border object-contain"
             />
-            <p className="border-t bg-muted/50 px-4 py-2.5 text-xs text-muted-foreground">
+            <p className="text-sm leading-relaxed">
               A typical layer panel in image editing software. Each part of the map sits on its
-              own layer — hide the ones you don't want, export the rest.
+              own layer — you can see <em>names</em>, <em>borders</em>, and the base map listed
+              separately. Hide the ones you don't want, export the rest. No erasing, no redrawing
+              — just click the eye icon next to a layer to toggle it off.
             </p>
           </div>
-
-          <p>
-            When your map is organised this way, "cleaning" it takes about thirty seconds: you
-            just click the eye icon next to the layers you want to hide, and export. No erasing,
-            no redrawing.
-          </p>
           <p>
             Some good free tools that support layers:
           </p>
