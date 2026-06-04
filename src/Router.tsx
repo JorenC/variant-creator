@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { HomePage } from "@/components/HomePage";
+import { PreparingMapPage } from "@/components/PreparingMapPage";
 import { LandingPage } from "@/components/LandingPage";
 import { DSvgCreator } from "@/components/dsvg/DSvgCreator";
 import { DvarCreator } from "@/components/dvar/DvarCreator";
@@ -32,6 +33,10 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <HomePage />,
+  },
+  {
+    path: "/preparing-your-map",
+    element: <PreparingMapPage />,
   },
   {
     path: "/variant-creator",

@@ -193,19 +193,14 @@ export function HomePage() {
               vectorized SVG. This step can be skipped if you're working with an SVG
               as starting document.
             </p>
-            <a
-              href="#preparing-your-map"
+            <button
+              type="button"
+              onClick={() => navigate("/preparing-your-map")}
               className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-4 hover:opacity-70"
             >
               How to prepare my map
               <ArrowRight className="h-3.5 w-3.5" />
-            </a>
-          </GuideSection>
-
-          <GuideSection id="preparing-your-map" icon={<Pencil className="h-4 w-4" />} title="Preparing your map">
-            <p className="text-sm text-muted-foreground">
-              Content coming soon.
-            </p>
+            </button>
           </GuideSection>
 
           <GuideSection id="map-extraction" number="2" icon={<Layers className="h-4 w-4" />} title="Map Extraction">
