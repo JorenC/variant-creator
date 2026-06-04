@@ -255,7 +255,8 @@ export function StyleMapPage() {
           <p className="text-lg leading-relaxed text-muted-foreground">
             At this point the AI has turned your image into a vector file — your provinces are now
             real shapes the computer can understand. It's also set up the correct layer structure.
-            Now it's time to check, clean up, and style everything before moving on.
+            Now it's time to check, clean up, and style everything before moving on. This is the
+            most fun part, but it can be tedious. Knowing how vector editing works helps a lot.
           </p>
         </div>
 
