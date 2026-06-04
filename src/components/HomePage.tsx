@@ -203,15 +203,20 @@ export function HomePage() {
             </button>
           </GuideSection>
 
-          <GuideSection id="map-extraction" number="2" icon={<Layers className="h-4 w-4" />} title="Map Extraction">
+          <GuideSection id="map-extraction" number="2" icon={<Layers className="h-4 w-4" />} title="Vectorize with AI">
             <p className="text-muted-foreground leading-relaxed">
-              How to import your map into Inkscape, separate province regions into
-              individual paths, add named-coast and unit-position layers, and export
-              a clean SVG ready for the dSVG Creator.
+              Run the vectorizer script over your PNG using Claude. Claude will trace your province
+              shapes, set up the correct layer structure, and tweak the settings to fit your map's
+              specific colours and style.
             </p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Content coming soon.
-            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/vectorize-with-ai")}
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-4 hover:opacity-70"
+            >
+              How to vectorize with AI
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </GuideSection>
 
           <GuideSection id="style-map" number="3" icon={<Layers className="h-4 w-4" />} title="Style and complete the map">
