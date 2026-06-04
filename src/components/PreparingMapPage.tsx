@@ -170,16 +170,21 @@ export function PreparingMapPage() {
             </p>
           </div>
           <p>
-            Some good free tools that support layers:
+            Some tools that support layers:
           </p>
-          <ul className="mt-1 list-inside list-disc space-y-1 text-sm">
+          <ul className="mt-1 list-inside list-disc space-y-2 text-sm">
             <li>
-              <strong>GIMP</strong> — free, works on Windows, Mac, and Linux.
-              Great for pixel-based (raster) images.
+              <strong>Figma</strong> — free for personal use, runs entirely in your browser so
+              there's nothing to install. Figma is a vector-based design tool, which means
+              everything you draw is already made of shapes rather than pixels — no conversion
+              needed. Its layers panel is clear and easy to work with, and because it's online
+              you can share your map with others or pick up where you left off on any device.
+              It's the tool we'd recommend if you're starting from scratch.
             </li>
             <li>
-              <strong>Inkscape</strong> — free, all platforms.
-              Works natively with vector files and is what Diplicity maps are ultimately built in.
+              <strong>GIMP</strong> — free, works on Windows, Mac, and Linux.
+              A good option if your starting point is a raster image (a photo or scanned drawing)
+              that needs cleaning up before vectorizing.
             </li>
             <li>
               <strong>Photoshop / Illustrator</strong> — professional and paid, but works well
