@@ -37,6 +37,9 @@ export function AppHeader({ steps, currentStep, filename, onClear, actions }: Ap
         >
           <img src="/diplicity-icon.png" alt="Diplicity" className="h-7 w-7 rounded" />
           <span className="font-semibold tracking-tight">Variant Creator</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            beta
+          </span>
         </button>
 
         {/* Stepper — centered, shown when steps are provided */}
