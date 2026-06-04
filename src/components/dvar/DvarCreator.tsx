@@ -7,7 +7,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AppHeader } from "@/components/common/AppHeader";
@@ -159,27 +159,10 @@ const nationsSchema = z.object({
     ),
 });
 
-const provinceNameEntrySchema = z.object({
-  id: z.string(),
-  name: z.string().min(1, "Name is required"),
-  type: z.string().optional(),
-  supplyCenter: z.boolean().optional(),
-  namedCoasts: z.array(z.object({
-    id: z.string(),
-    name: z.string().min(1, "Name is required"),
-  })),
-});
-
-const provincesNamesSchema = z.object({
-  provinces: z.array(provinceNameEntrySchema),
-});
-
-const provincesFormSchema = z.object({
+const provinceNamesFormSchema = z.object({
   provinces: z.array(z.object({
     id: z.string(),
     name: z.string().min(1, "Name is required"),
-    type: z.enum(["land", "sea", "coastal"], { error: "Province type is required" }),
-    supplyCenter: z.boolean(),
     namedCoasts: z.array(z.object({
       id: z.string(),
       name: z.string().min(1, "Name is required"),
@@ -187,9 +170,27 @@ const provincesFormSchema = z.object({
   })),
 });
 
+const provinceTypesFormSchema = z.object({
+  provinces: z.array(z.object({
+    id: z.string(),
+    type: z.enum(["land", "sea", "coastal"], { error: "Province type is required" }),
+    supplyCenter: z.boolean(),
+  })),
+});
+
 type BasicInfoValues = z.infer<typeof basicInfoSchema>;
 type NationsValues = z.infer<typeof nationsSchema>;
-type ProvincesFormValues = z.infer<typeof provincesFormSchema>;
+type ProvinceNamesFormValues = z.infer<typeof provinceNamesFormSchema>;
+type ProvinceTypesFormValues = z.infer<typeof provinceTypesFormSchema>;
+type ProvincesFormValues = {
+  provinces: Array<{
+    id: string;
+    name: string;
+    type: "land" | "sea" | "coastal";
+    supplyCenter: boolean;
+    namedCoasts: Array<{ id: string; name: string }>;
+  }>;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -909,23 +910,46 @@ export function DvarCreator() {
     setStep("province-names");
   };
 
-  const handleProvinceNamesSubmit = (values: ProvincesFormValues) => {
-    setProvincesData(values);
+  const handleProvinceNamesSubmit = (values: ProvinceNamesFormValues) => {
+    const base = (provincesData && provincesData.provinces.length > 0)
+      ? provincesData.provinces
+      : buildInitialProvinces(parsedDsvg!);
+    const nameMap = new Map(values.provinces.map(p => [p.id, p]));
+    const merged = base.map(p => {
+      const n = nameMap.get(p.id);
+      return {
+        ...p,
+        name: n?.name ?? p.name,
+        namedCoasts: p.namedCoasts.map((c, j) => ({
+          ...c,
+          name: n?.namedCoasts[j]?.name ?? c.name,
+        })),
+      };
+    });
+    setProvincesData({ provinces: merged });
     setStep("province-types");
   };
 
-  const handleProvinceTypesSubmit = (values: ProvincesFormValues) => {
-    setProvincesData(values);
+  const handleProvinceTypesSubmit = (values: ProvinceTypesFormValues) => {
+    const base = (provincesData && provincesData.provinces.length > 0)
+      ? provincesData.provinces
+      : buildInitialProvinces(parsedDsvg!);
+    const typeMap = new Map(values.provinces.map(p => [p.id, p]));
+    const merged = base.map(p => {
+      const t = typeMap.get(p.id);
+      return { ...p, type: t?.type ?? p.type, supplyCenter: t?.supplyCenter ?? p.supplyCenter };
+    });
+    setProvincesData({ provinces: merged });
     setAdjacenciesData(
       prev => prev ?? buildEmptyDvarAdjacencyMap([
-        ...values.provinces.map(p => p.id),
-        ...values.provinces.flatMap(p => p.namedCoasts.map(c => c.id)),
+        ...merged.map(p => p.id),
+        ...merged.flatMap(p => p.namedCoasts.map(c => c.id)),
       ])
     );
     setHomeNationsData(prev => {
       if (prev !== null) return prev;
       const initial: HomeNationsData = {};
-      for (const p of values.provinces) {
+      for (const p of merged) {
         if (p.supplyCenter) initial[p.id] = { nation: "", startingUnit: null, startingCoast: null };
       }
       return initial;
@@ -1165,33 +1189,33 @@ export function DvarCreator() {
               />
             )}
 
-            {step === "province-names" && svgContent && parsedDsvg && (
-              <ProvincesForm
-                formId={provinceNamesFormId}
-                svgContent={svgContent}
-                mode="names"
-                defaultValues={
-                  provincesData && provincesData.provinces.length > 0
-                    ? { provinces: [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id)) }
-                    : { provinces: buildInitialProvinces(parsedDsvg) }
-                }
-                onSubmit={handleProvinceNamesSubmit}
-              />
-            )}
+            {step === "province-names" && svgContent && parsedDsvg && (() => {
+              const base = (provincesData && provincesData.provinces.length > 0)
+                ? [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id))
+                : buildInitialProvinces(parsedDsvg);
+              return (
+                <ProvinceNamesForm
+                  formId={provinceNamesFormId}
+                  svgContent={svgContent}
+                  defaultValues={{ provinces: base.map(p => ({ id: p.id, name: p.name, namedCoasts: p.namedCoasts.map(c => ({ id: c.id, name: c.name })) })) }}
+                  onSubmit={handleProvinceNamesSubmit}
+                />
+              );
+            })()}
 
-            {step === "province-types" && svgContent && parsedDsvg && (
-              <ProvincesForm
-                formId={provinceTypesFormId}
-                svgContent={svgContent}
-                mode="types"
-                defaultValues={
-                  provincesData && provincesData.provinces.length > 0
-                    ? { provinces: [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id)) }
-                    : { provinces: buildInitialProvinces(parsedDsvg) }
-                }
-                onSubmit={handleProvinceTypesSubmit}
-              />
-            )}
+            {step === "province-types" && svgContent && parsedDsvg && (() => {
+              const base = (provincesData && provincesData.provinces.length > 0)
+                ? [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id))
+                : buildInitialProvinces(parsedDsvg);
+              return (
+                <ProvinceTypesForm
+                  formId={provinceTypesFormId}
+                  svgContent={svgContent}
+                  defaultValues={{ provinces: base.map(p => ({ id: p.id, type: p.type, supplyCenter: p.supplyCenter })) }}
+                  onSubmit={handleProvinceTypesSubmit}
+                />
+              );
+            })()}
 
             {step === "home-nations" && svgContent && homeNationsData && provincesData && nations && (
               <HomeNationsForm
@@ -1608,53 +1632,28 @@ function NationsForm({ formId, defaultValues, onSubmit }: NationsFormProps) {
   );
 }
 
-// ─── ProvincesForm ─────────────────────────────────────────────────────────────
+// ─── ProvinceNamesForm ────────────────────────────────────────────────────────
 
-interface ProvincesFormProps {
+interface ProvinceNamesFormProps {
   formId: string;
   svgContent: string;
-  mode: "names" | "types";
-  defaultValues: ProvincesFormValues;
-  onSubmit: (values: ProvincesFormValues) => void;
+  defaultValues: ProvinceNamesFormValues;
+  onSubmit: (values: ProvinceNamesFormValues) => void;
 }
 
-const PROVINCE_TYPE_COLORS: Record<string, string> = {
-  land: "#3b82f6",
-  coastal: "#22c55e",
-  sea: "#fde047",
-};
-
-function ProvincesForm({ formId, svgContent, mode, defaultValues, onSubmit }: ProvincesFormProps) {
+function ProvinceNamesForm({ formId, svgContent, defaultValues, onSubmit }: ProvinceNamesFormProps) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const {
-    register,
-    control,
-    handleSubmit,
-    watch,
-    formState: { errors },
-  } = useForm<ProvincesFormValues>({
-    resolver: zodResolver(mode === "names" ? provincesNamesSchema : provincesFormSchema),
+  const { register, handleSubmit, formState: { errors } } = useForm<ProvinceNamesFormValues>({
+    resolver: zodResolver(provinceNamesFormSchema),
     defaultValues,
   });
 
-  const watchedProvinces = watch("provinces");
-
-  const typeColorMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const p of watchedProvinces) {
-      const color = p.type ? PROVINCE_TYPE_COLORS[p.type] : undefined;
-      if (color) map[p.id] = color;
-    }
-    return map;
-  }, [watchedProvinces]);
-
   const previewSvg = useMemo(
-    () => buildProvincePreviewSvg(svgContent, highlightedId, mode === "types" ? typeColorMap : {}),
-    [svgContent, highlightedId, mode, typeColorMap]
+    () => buildProvincePreviewSvg(svgContent, highlightedId),
+    [svgContent, highlightedId]
   );
-
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
     const blob = new Blob([previewSvg], { type: "image/svg+xml" });
@@ -1662,50 +1661,33 @@ function ProvincesForm({ formId, svgContent, mode, defaultValues, onSubmit }: Pr
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [previewSvg]);
-
   const aspectRatio = useMemo(() => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgContent, "image/svg+xml");
     const vb = doc.documentElement.getAttribute("viewBox") ?? "";
     const parts = vb.split(/\s+/).map(Number);
-    return parts.length >= 4 && parts[2] > 0 && parts[3] > 0
-      ? `${parts[2]} / ${parts[3]}`
-      : "16 / 9";
+    return parts.length >= 4 && parts[2] > 0 && parts[3] > 0 ? `${parts[2]} / ${parts[3]}` : "16 / 9";
   }, [svgContent]);
 
   const handleGroupFocus = (id: string) => {
     if (blurTimer.current !== null) clearTimeout(blurTimer.current);
     setHighlightedId(id);
   };
-  const handleGroupBlur = () => {
-    blurTimer.current = setTimeout(() => setHighlightedId(null), 0);
-  };
+  const handleGroupBlur = () => { blurTimer.current = setTimeout(() => setHighlightedId(null), 0); };
 
   const hasErrors = Object.keys(errors).length > 0;
 
   return (
     <form id={formId} onSubmit={handleSubmit(onSubmit)}>
       {hasErrors && (
-        <p className="mb-4 text-sm text-destructive">
-          {mode === "names"
-            ? "Please fill in all names before proceeding."
-            : "Please select a type (L/C/S) for every province before proceeding."}
-        </p>
+        <p className="mb-4 text-sm text-destructive">Please fill in all names before proceeding.</p>
       )}
-
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-1">
-          {mode === "types" && (
-            <div className="pr-2 text-right text-xs text-muted-foreground">
-              {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
-            </div>
-          )}
-          {mode === "names" && (
-            <div className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
-              <span className="w-16 shrink-0">Abbreviation</span>
-              <span>Human name</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
+            <span className="w-16 shrink-0">Abbreviation</span>
+            <span>Human name</span>
+          </div>
           <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
             {defaultValues.provinces.map((province, i) => (
               <div
@@ -1715,92 +1697,28 @@ function ProvincesForm({ formId, svgContent, mode, defaultValues, onSubmit }: Pr
                 onFocus={() => handleGroupFocus(province.id)}
                 onBlur={handleGroupBlur}
               >
-                <div
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
-                    highlightedId === province.id
-                      ? "bg-yellow-50 dark:bg-yellow-950/30"
-                      : "hover:bg-muted/40"
-                  )}
-                >
+                <div className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
+                  highlightedId === province.id ? "bg-yellow-50 dark:bg-yellow-950/30" : "hover:bg-muted/40"
+                )}>
                   <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
                     {province.id}
                   </span>
-
-                  {mode === "names" && (
-                    <Input
-                      {...register(`provinces.${i}.name`)}
-                      placeholder="Human name"
-                      autoComplete="off"
-                      aria-invalid={!!errors.provinces?.[i]?.name}
-                      className="h-7 text-sm"
-                    />
-                  )}
-
-                  {mode === "types" && (
-                    <>
-                      <div className={cn(
-                        "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1",
-                        errors.provinces?.[i]?.type && "border-destructive"
-                      )}>
-                        {(["land", "sea", "coastal"] as const).map(t => (
-                          <Controller
-                            key={t}
-                            control={control}
-                            name={`provinces.${i}.type`}
-                            render={({ field }) => (
-                              <label className="relative flex cursor-pointer items-center">
-                                <input
-                                  type="radio"
-                                  className="absolute opacity-0 w-0 h-0"
-                                  value={t}
-                                  checked={field.value === t}
-                                  onChange={() => field.onChange(t)}
-                                />
-                                <span
-                                  className={cn(
-                                    "rounded px-1 py-0.5 text-xs font-medium transition-colors",
-                                    field.value === t
-                                      ? "bg-primary text-primary-foreground"
-                                      : "text-muted-foreground hover:text-foreground"
-                                  )}
-                                >
-                                  {t[0].toUpperCase()}
-                                </span>
-                              </label>
-                            )}
-                          />
-                        ))}
-                      </div>
-                      <Controller
-                        control={control}
-                        name={`provinces.${i}.supplyCenter`}
-                        render={({ field }) => (
-                          <label className="flex shrink-0 cursor-pointer items-center gap-1">
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                            <span className="text-xs text-muted-foreground">SC</span>
-                          </label>
-                        )}
-                      />
-                    </>
-                  )}
+                  <Input
+                    {...register(`provinces.${i}.name`)}
+                    placeholder="Human name"
+                    autoComplete="off"
+                    aria-invalid={!!errors.provinces?.[i]?.name}
+                    className="h-7 text-sm"
+                  />
                 </div>
-
-                {mode === "names" && province.namedCoasts.length > 0 && (
+                {province.namedCoasts.length > 0 && (
                   <div className="ml-4 space-y-0.5 border-l-2 border-muted pl-3">
                     {province.namedCoasts.map((coast, j) => (
-                      <div
-                        key={coast.id}
-                        className={cn(
-                          "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
-                          highlightedId === province.id
-                            ? "bg-yellow-50 dark:bg-yellow-950/30"
-                            : "hover:bg-muted/40"
-                        )}
-                      >
+                      <div key={coast.id} className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
+                        highlightedId === province.id ? "bg-yellow-50 dark:bg-yellow-950/30" : "hover:bg-muted/40"
+                      )}>
                         <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
                           {coast.id}
                         </span>
@@ -1819,19 +1737,153 @@ function ProvincesForm({ formId, svgContent, mode, defaultValues, onSubmit }: Pr
             ))}
           </div>
         </div>
-
         <div className="sticky top-8 self-start">
-          <div
-            className="w-full overflow-hidden rounded-lg border"
-            style={{ aspectRatio }}
-          >
-            {previewUrl && (
-              <img
-                src={previewUrl}
-                alt="Map preview"
-                className="h-full w-full object-contain"
-              />
-            )}
+          <div className="w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+            {previewUrl && <img src={previewUrl} alt="Map preview" className="h-full w-full object-contain" />}
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+// ─── ProvinceTypesForm ────────────────────────────────────────────────────────
+
+interface ProvinceTypesFormProps {
+  formId: string;
+  svgContent: string;
+  defaultValues: ProvinceTypesFormValues;
+  onSubmit: (values: ProvinceTypesFormValues) => void;
+}
+
+const PROVINCE_TYPE_COLORS: Record<string, string> = {
+  land: "#22c55e",
+  coastal: "#fde047",
+  sea: "#3b82f6",
+};
+
+function ProvinceTypesForm({ formId, svgContent, defaultValues, onSubmit }: ProvinceTypesFormProps) {
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { control, handleSubmit, formState: { errors } } = useForm<ProvinceTypesFormValues>({
+    resolver: zodResolver(provinceTypesFormSchema),
+    defaultValues,
+  });
+
+  const watchedProvinces = useWatch({ control, name: "provinces" });
+
+  const typeColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of watchedProvinces) {
+      const color = p.type ? PROVINCE_TYPE_COLORS[p.type] : undefined;
+      if (color) map[p.id] = color;
+    }
+    return map;
+  }, [watchedProvinces]);
+
+  const previewSvg = useMemo(
+    () => buildProvincePreviewSvg(svgContent, highlightedId, typeColorMap),
+    [svgContent, highlightedId, typeColorMap]
+  );
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const blob = new Blob([previewSvg], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [previewSvg]);
+  const aspectRatio = useMemo(() => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgContent, "image/svg+xml");
+    const vb = doc.documentElement.getAttribute("viewBox") ?? "";
+    const parts = vb.split(/\s+/).map(Number);
+    return parts.length >= 4 && parts[2] > 0 && parts[3] > 0 ? `${parts[2]} / ${parts[3]}` : "16 / 9";
+  }, [svgContent]);
+
+  const handleGroupFocus = (id: string) => {
+    if (blurTimer.current !== null) clearTimeout(blurTimer.current);
+    setHighlightedId(id);
+  };
+  const handleGroupBlur = () => { blurTimer.current = setTimeout(() => setHighlightedId(null), 0); };
+
+  const hasErrors = Object.keys(errors).length > 0;
+
+  return (
+    <form id={formId} onSubmit={handleSubmit(onSubmit)}>
+      {hasErrors && (
+        <p className="mb-4 text-sm text-destructive">Please select a type (L/C/S) for every province before proceeding.</p>
+      )}
+      <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+        <div className="flex flex-col gap-1">
+          <div className="pr-2 text-right text-xs text-muted-foreground">
+            {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
+          </div>
+          <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
+            {defaultValues.provinces.map((province, i) => (
+              <div
+                key={province.id}
+                onMouseEnter={() => setHighlightedId(province.id)}
+                onMouseLeave={() => setHighlightedId(null)}
+                onFocus={() => handleGroupFocus(province.id)}
+                onBlur={handleGroupBlur}
+              >
+                <div className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
+                  highlightedId === province.id ? "bg-yellow-50 dark:bg-yellow-950/30" : "hover:bg-muted/40"
+                )}>
+                  <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                    {province.id}
+                  </span>
+                  <div className={cn(
+                    "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1",
+                    errors.provinces?.[i]?.type && "border-destructive"
+                  )}>
+                    {(["land", "sea", "coastal"] as const).map(t => (
+                      <Controller
+                        key={t}
+                        control={control}
+                        name={`provinces.${i}.type`}
+                        render={({ field }) => (
+                          <label className="relative flex cursor-pointer items-center">
+                            <input
+                              type="radio"
+                              className="absolute opacity-0 w-0 h-0"
+                              value={t}
+                              checked={field.value === t}
+                              onChange={() => field.onChange(t)}
+                            />
+                            <span className={cn(
+                              "rounded px-1 py-0.5 text-xs font-medium transition-colors",
+                              field.value === t
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}>
+                              {t[0].toUpperCase()}
+                            </span>
+                          </label>
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <Controller
+                    control={control}
+                    name={`provinces.${i}.supplyCenter`}
+                    render={({ field }) => (
+                      <label className="flex shrink-0 cursor-pointer items-center gap-1">
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                        <span className="text-xs text-muted-foreground">SC</span>
+                      </label>
+                    )}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="sticky top-8 self-start">
+          <div className="w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+            {previewUrl && <img src={previewUrl} alt="Map preview" className="h-full w-full object-contain" />}
           </div>
         </div>
       </div>
