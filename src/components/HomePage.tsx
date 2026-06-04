@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, BookOpen, Layers, FileCode2, FileJson, Upload } from "lucide-react";
+import { ArrowRight, Layers, FileCode2, FileJson, Upload, Pencil } from "lucide-react";
 import { AppHeader } from "@/components/common/AppHeader";
 
 interface MapTile {
@@ -22,7 +22,7 @@ const MOSAIC: MapTile[] = [
 
 interface GuideSectionProps {
   id: string;
-  number: string;
+  number?: string;
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
@@ -36,9 +36,11 @@ function GuideSection({ id, number, icon, title, children }: GuideSectionProps) 
           {icon}
         </div>
         <div className="flex-1">
-          <p className="mb-0.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            Step {number}
-          </p>
+          {number && (
+            <p className="mb-0.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              Step {number}
+            </p>
+          )}
           <h2 className="mb-4 text-2xl font-bold">{title}</h2>
           {children}
         </div>
@@ -185,13 +187,23 @@ export function HomePage() {
             </p>
           </div>
 
-          <GuideSection id="instructions" number="1" icon={<BookOpen className="h-4 w-4" />} title="Instructions">
+          <GuideSection id="prepare-map" number="1" icon={<Pencil className="h-4 w-4" />} title="Prepare a PNG map">
             <p className="text-muted-foreground leading-relaxed">
-              An overview of the full workflow for creating a Diplomacy variant — from
-              preparing your map image, through building the dSVG and dVAR files, to
-              uploading the finished variant to Diplicity.
+              You start by drawing your map, which we'll let AI trace and make into a
+              vectorized SVG. This step can be skipped if you're working with an SVG
+              as starting document.
             </p>
-            <p className="mt-3 text-sm text-muted-foreground">
+            <a
+              href="#preparing-your-map"
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-4 hover:opacity-70"
+            >
+              How to prepare my map
+              <ArrowRight className="h-3.5 w-3.5" />
+            </a>
+          </GuideSection>
+
+          <GuideSection id="preparing-your-map" icon={<Pencil className="h-4 w-4" />} title="Preparing your map">
+            <p className="text-sm text-muted-foreground">
               Content coming soon.
             </p>
           </GuideSection>
