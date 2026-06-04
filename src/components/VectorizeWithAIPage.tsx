@@ -166,9 +166,9 @@ export function VectorizeWithAIPage() {
           <Step number="6" title="Check the result">
             <p>
               When Claude is done, it will tell you the output file is ready. You should find a
-              new file in the folder — open it in Figma to see your vectorized map with the layer
-              structure already set up. Have a look through the layers to make sure everything
-              looks right before moving on to step 3.
+              new file called <code>map.svg</code> in the folder — open it in Figma to see your
+              vectorized map with the layer structure already set up. Have a look through the
+              layers to make sure everything looks right before moving on to step 3.
             </p>
           </Step>
         </section>
