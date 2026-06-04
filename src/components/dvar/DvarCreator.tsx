@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   GripVertical,
   Download,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -929,6 +930,22 @@ export function DvarCreator() {
     setStep("export");
   };
 
+  const handleSaveProgress = () => {
+    const output = assemblePartialDvar(
+      basicInfo, nations, provincesData, homeNationsData,
+      adjacenciesData, dominanceRulesData, phaseProgressionData,
+      victoryConditionsData, adjudicationModifiersData,
+    );
+    const id = basicInfo?.id?.trim() || fileName?.replace(/\.d\.svg$/i, "") || "draft";
+    const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${id}.dvar`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const currentFormId =
     step === "basic-info" ? basicInfoFormId :
     step === "nations" ? nationsFormId :
@@ -1236,44 +1253,51 @@ export function DvarCreator() {
                 Back
               </Button>
 
-              {step !== "export" && (
-                step === "home-nations" ? (
-                  <Button onClick={() => homeNationsRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : step === "adjacencies" ? (
-                  <Button onClick={() => adjacenciesRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : step === "dominance-rules" ? (
-                  <Button onClick={() => dominanceRulesRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : step === "phase-progression" ? (
-                  <Button onClick={() => phaseProgressionRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : step === "victory-conditions" ? (
-                  <Button onClick={() => victoryConditionsRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : step === "adjudication-modifiers" ? (
-                  <Button onClick={() => adjudicationModifiersRef.current?.submit()}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : currentFormId ? (
-                  <Button type="submit" form={currentFormId}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : null
-              )}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleSaveProgress}>
+                  <Save className="h-4 w-4" />
+                  Save progress
+                </Button>
+
+                {step !== "export" && (
+                  step === "home-nations" ? (
+                    <Button onClick={() => homeNationsRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "adjacencies" ? (
+                    <Button onClick={() => adjacenciesRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "dominance-rules" ? (
+                    <Button onClick={() => dominanceRulesRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "phase-progression" ? (
+                    <Button onClick={() => phaseProgressionRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "victory-conditions" ? (
+                    <Button onClick={() => victoryConditionsRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "adjudication-modifiers" ? (
+                    <Button onClick={() => adjudicationModifiersRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : currentFormId ? (
+                    <Button type="submit" form={currentFormId}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : null
+                )}
+              </div>
             </div>
           </>
         )}
@@ -3278,6 +3302,32 @@ const AdjudicationModifiersForm = forwardRef<AdjudicationModifiersFormHandle, Ad
 );
 
 AdjudicationModifiersForm.displayName = "AdjudicationModifiersForm";
+
+// ─── Partial dVAR assembly (for save-progress) ───────────────────────────────
+
+function assemblePartialDvar(
+  basicInfo: BasicInfoValues | null,
+  nations: NationsValues["nations"] | null,
+  provincesData: ProvincesFormValues | null,
+  homeNationsData: HomeNationsData | null,
+  adjacenciesData: DvarAdjacencyMap | null,
+  dominanceRulesData: DominanceRulesData | null,
+  phaseProgressionData: PhaseProgressionData | null,
+  victoryConditionsData: VictoryConditionsData | null,
+  adjudicationModifiersData: string[] | null,
+): Record<string, unknown> {
+  return assembleDvar({
+    basicInfo: basicInfo ?? { id: "", name: "", description: "", author: "", startYear: 1901, rules: "" },
+    nations: nations ?? [],
+    provincesData: provincesData ?? { provinces: [] },
+    homeNationsData: homeNationsData ?? {},
+    adjacenciesData: adjacenciesData ?? {},
+    dominanceRulesData: dominanceRulesData ?? {},
+    phaseProgressionData: phaseProgressionData ?? [],
+    victoryConditionsData: victoryConditionsData ?? [],
+    adjudicationModifiersData: adjudicationModifiersData ?? [],
+  });
+}
 
 // ─── Export step ──────────────────────────────────────────────────────────────
 
