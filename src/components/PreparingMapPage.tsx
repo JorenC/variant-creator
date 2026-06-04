@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppHeader } from "@/components/common/AppHeader";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Image comparison tabs ────────────────────────────────────────────────────
@@ -69,6 +72,7 @@ function Callout({ variant, children }: { variant: "good" | "bad"; children: Rea
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function PreparingMapPage() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<(typeof COMPARISON_TABS)[number]["key"]>("original");
   const current = COMPARISON_TABS.find(t => t.key === activeTab)!;
 
@@ -273,6 +277,18 @@ export function PreparingMapPage() {
             So don't agonise over getting every curve exactly right.
           </p>
         </Section>
+
+        {/* ── Next step ───────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between rounded-xl border bg-muted/30 px-6 py-5">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Up next</p>
+            <p className="mt-0.5 font-semibold">Step 2 — Vectorize with AI</p>
+          </div>
+          <Button onClick={() => navigate("/vectorize-with-ai")}>
+            Next step
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
 
       </main>
     </div>
