@@ -446,16 +446,15 @@ export function StyleMapPage() {
             <div className="space-y-3">
               <h3 className="text-base font-semibold text-foreground">1. Cleaned up the borders</h3>
               <p>
-                The AI traced the borders directly from the PNG, which left them a bit thin and
-                rough. By selecting all objects in the borders layer and increasing the stroke
-                weight, then manually adjusting a few paths that didn't align correctly, the
-                borders become much cleaner and more readable.
+                The AI traced the borders directly from the PNG, which left some errors. I manually
+                selected individual borders (and checked the corresponding shapes in the provinces
+                layer) and deleted the parts that were wrong.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <img
                     src="/guide/canaan-borders-before.png"
-                    alt="Borders before cleanup — thin, inconsistent lines"
+                    alt="Borders before cleanup"
                     className="w-full rounded-lg border"
                   />
                   <p className="mt-1 text-center text-xs text-muted-foreground">Before</p>
@@ -463,7 +462,7 @@ export function StyleMapPage() {
                 <div>
                   <img
                     src="/guide/canaan-borders-after.png"
-                    alt="Borders after cleanup — thick, consistent black lines"
+                    alt="Borders after cleanup"
                     className="w-full rounded-lg border"
                   />
                   <p className="mt-1 text-center text-xs text-muted-foreground">After</p>
@@ -475,11 +474,11 @@ export function StyleMapPage() {
             <div className="space-y-3">
               <h3 className="text-base font-semibold text-foreground">2. Redrawn oasis provinces with a gradient</h3>
               <p>
-                The original map had three small circular oasis provinces in the desert that didn't
-                translate well from the PNG. Rather than keeping them, new provinces were drawn to
-                fill the full desert area — and to give the desert a sense of depth, a gradient
-                fill was applied across the three provinces (light sand shading into deep orange
-                and red), making the region feel visually distinct from the rest of the map.
+                The original map had three small circular oasis provinces in the desert that I
+                wanted to change. I deleted them and their respective borders, then manually
+                redrew provinces to fill the full desert area. To give the desert a sense of
+                depth, I applied a gradient fill over their respective borders, making the region
+                feel visually distinct from the rest of the map.
               </p>
               <img
                 src="/guide/canaan-oasis.png"
@@ -492,24 +491,24 @@ export function StyleMapPage() {
             <div className="space-y-3">
               <h3 className="text-base font-semibold text-foreground">3. Proto-Hebrew labels with outlined text</h3>
               <p>
-                Proto-Hebrew script was added as ornamental province labels in the foreground layer.
-                Because this font is highly unusual and not available on Google Fonts, it can't
-                be reliably loaded for all players. The solution: right-click each text layer in
-                Figma and select <strong>"Outline stroke"</strong>. This converts the text into
-                vector shapes, so the font file is no longer needed — the glyphs are drawn
-                directly.
+                I added Proto-Hebrew script as ornamental province labels in the foreground layer.
+                Because this font is highly unusual and not available on Google Fonts, it isn't
+                reliably loaded for all players. I outlined the strokes, ensuring the text is
+                visible without requiring any font: right-click each text layer in Figma and
+                select <strong>"Outline stroke"</strong>. This converts the text into vector
+                shapes — the glyphs are drawn directly.
               </p>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                <strong>Important:</strong> text outlining bloats the SVG size, and outlined text
+                can no longer be edited. Save a copy of your file before doing this. If your font
+                is on Google Fonts, skip this step — we'll link the font during export instead,
+                which keeps the file smaller and faster to load.
+              </div>
               <img
                 src="/guide/figma-outline-text.png"
                 alt="Figma context menu with Outline stroke highlighted"
                 className="mx-auto w-56 rounded-lg border"
               />
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-                <strong>Important:</strong> once text is outlined it can no longer be edited as
-                text. Save a copy of your file before doing this. And if your font{" "}
-                <em>is</em> on Google Fonts, skip this step entirely — we'll link the font during
-                export instead, which keeps the file smaller and faster to load.
-              </div>
             </div>
 
           </div>
