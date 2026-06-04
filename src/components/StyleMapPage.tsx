@@ -364,7 +364,7 @@ export function StyleMapPage() {
             <img
               src="/guide/export.png"
               alt="Figma export settings panel showing 'Include id attribute' checked and SVG format selected"
-              className="w-full rounded-lg border sm:w-56 sm:shrink-0"
+              className="w-full rounded-lg border sm:w-80 sm:shrink-0"
             />
             <div className="space-y-3 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
               <p>
