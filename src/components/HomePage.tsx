@@ -216,8 +216,18 @@ export function HomePage() {
 
           <GuideSection id="style-map" number="3" icon={<Layers className="h-4 w-4" />} title="Style and complete the map">
             <p className="text-muted-foreground leading-relaxed">
-              Content coming soon.
+              Check and organise the seven layers the ingestor expects — background, provinces,
+              named coasts, unit positions, names, borders, and foreground — then style your map
+              to look the way you want.
             </p>
+            <button
+              type="button"
+              onClick={() => navigate("/style-map")}
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-4 hover:opacity-70"
+            >
+              How to style and complete the map
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </GuideSection>
 
           <GuideSection id="dsvg-creation" number="4" icon={<FileCode2 className="h-4 w-4" />} title="dSVG Creation">
