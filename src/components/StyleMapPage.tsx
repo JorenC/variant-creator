@@ -53,6 +53,12 @@ const LAYERS: LayerInfo[] = [
           This isn't strictly required, but it makes the dSVG creation step much easier — these
           names become the source of truth for the whole variant.
         </p>
+        <p className="mt-2">
+          <strong>These shapes are not rendered visually in the final map.</strong> Diplicity uses
+          them only to know which area belongs to which province — for example when highlighting or
+          colouring a province during gameplay. The fills and colours you see here won't show up for
+          players. For the visual appearance of your provinces, use the <strong>background</strong> layer.
+        </p>
       </>
     ),
   },
@@ -75,6 +81,11 @@ const LAYERS: LayerInfo[] = [
           for example <code className="rounded bg-muted px-1 py-0.5 text-xs">spa/nc</code> and{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">spa/sc</code> for Spain's north
           and south coasts.
+        </p>
+        <p className="mt-2">
+          Like the provinces layer, <strong>these shapes are not rendered visually</strong> — they
+          only define the areas Diplicity uses for coast-specific colouring and targeting during
+          gameplay. Put any visual styling for those areas in the <strong>background</strong> layer.
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
           Our Land of Canaan example has no named coasts, so you can skip this layer for now.
