@@ -151,9 +151,13 @@ const LAYERS: LayerInfo[] = [
     details: (
       <>
         <p>
-          These are typically simple lines or paths that run along the edges between provinces.
+          The AI has already created a borders layer for you, extracted from the lines in your
+          original map. You should have a ready-to-use set of border paths — check that they look
+          right and adjust any that are missing or misplaced.
+        </p>
+        <p className="mt-2">
           Style them however you like — thickness, colour, dashes. If your province shapes
-          already have visible outlines, you may be able to use those directly.
+          already have visible outlines, you may be able to use those directly instead.
         </p>
       </>
     ),
