@@ -1,9 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
-import { Download, ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Download, ChevronDown, ChevronRight, Loader2, CheckCircle2, AlertCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { buildDsvgOutput, buildVisibilityPreviewSvg } from "@/utils/svgBuild";
+import { analyzeSvgFonts, embedFonts } from "@/utils/fontEmbed";
+import type { SvgFontInfo } from "@/utils/fontEmbed";
 import type { SvgTreeNode } from "@/utils/svgTree";
 import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
 
@@ -80,6 +82,30 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
     [svgContent, displayNodes, visibleKeys]
   );
 
+  const [embedFontsEnabled, setEmbedFontsEnabled] = useState(false);
+  const [fontCheckLoading, setFontCheckLoading] = useState(false);
+  const [fontInfo, setFontInfo] = useState<SvgFontInfo | null>(null);
+  const [uploadedFonts, setUploadedFonts] = useState<Map<string, ArrayBuffer>>(new Map());
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!embedFontsEnabled) {
+      setFontInfo(null);
+      setUploadedFonts(new Map());
+      return;
+    }
+    let cancelled = false;
+    setFontCheckLoading(true);
+    setFontInfo(null);
+    analyzeSvgFonts(svgContent).then(info => {
+      if (!cancelled) {
+        setFontInfo(info);
+        setFontCheckLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [embedFontsEnabled, svgContent]);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
     const blob = new Blob([previewSvg], { type: "image/svg+xml" });
@@ -98,16 +124,24 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
       : undefined;
   }, [svgContent]);
 
-  const handleDownload = () => {
-    const output = buildDsvgOutput(svgContent, assignments, unitPositionCodes);
-    const baseName = fileName.replace(/\.svg$/i, "");
-    const blob = new Blob([output], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${baseName}.d.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes);
+      if (embedFontsEnabled && fontInfo) {
+        output = await embedFonts(output, fontInfo, uploadedFonts);
+      }
+      const baseName = fileName.replace(/\.svg$/i, "");
+      const blob = new Blob([output], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${baseName}.d.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   // Assigned layers in canonical output order, skipping unassigned ones
@@ -175,9 +209,53 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
           </GroupRow>
         </div>
 
-        <Button onClick={handleDownload}>
-          <Download className="h-4 w-4" />
-          Download dSVG
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="embed-fonts"
+              checked={embedFontsEnabled}
+              onCheckedChange={(c) => setEmbedFontsEnabled(c === true)}
+            />
+            <Label htmlFor="embed-fonts" className="cursor-pointer text-sm">
+              Embed fonts
+            </Label>
+          </div>
+
+          {embedFontsEnabled && (
+            <div className="rounded-md border px-3 py-2 text-xs">
+              {fontCheckLoading ? (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Checking fonts…
+                </div>
+              ) : fontInfo && fontInfo.fonts.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  {fontInfo.fonts.map(font => (
+                    <FontStatusRow
+                      key={font.family}
+                      family={font.family}
+                      availableOnGoogle={font.availableOnGoogle}
+                      uploaded={uploadedFonts.has(font.family)}
+                      onUpload={(buf) =>
+                        setUploadedFonts(prev => new Map([...prev, [font.family, buf]]))
+                      }
+                    />
+                  ))}
+                </div>
+              ) : fontInfo ? (
+                <span className="text-muted-foreground">No fonts detected in SVG</span>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        <Button onClick={handleDownload} disabled={isDownloading || fontCheckLoading}>
+          {isDownloading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          {isDownloading ? "Embedding…" : "Download dSVG"}
         </Button>
       </div>
 
@@ -190,6 +268,63 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
           />
         )}
       </div>
+    </div>
+  );
+}
+
+interface FontStatusRowProps {
+  family: string;
+  availableOnGoogle: boolean;
+  uploaded: boolean;
+  onUpload: (buffer: ArrayBuffer) => void;
+}
+
+function FontStatusRow({ family, availableOnGoogle, uploaded, onUpload }: FontStatusRowProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    onUpload(await file.arrayBuffer());
+    e.target.value = "";
+  };
+
+  const resolved = availableOnGoogle || uploaded;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {resolved ? (
+        <CheckCircle2 className={`h-3 w-3 shrink-0 ${uploaded && !availableOnGoogle ? "text-blue-500" : "text-green-500"}`} />
+      ) : (
+        <AlertCircle className="h-3 w-3 shrink-0 text-amber-500" />
+      )}
+      <span className={`font-mono ${!resolved ? "text-amber-600 dark:text-amber-400" : ""}`}>
+        {family}
+      </span>
+      {!availableOnGoogle && !uploaded && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".woff2"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="ml-auto h-auto p-0 text-xs"
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload className="h-3 w-3" />
+            Upload .woff2
+          </Button>
+        </>
+      )}
+      {uploaded && (
+        <span className="ml-auto text-muted-foreground">uploaded</span>
+      )}
     </div>
   );
 }
