@@ -138,6 +138,22 @@ const LAYERS: LayerInfo[] = [
           "Paris", etc. Place it somewhere readable inside the province. Font, size, and colour
           are all up to you.
         </p>
+        <p className="mt-2">
+          <strong>Use a font from{" "}
+          <a
+            href="https://fonts.google.com"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-4 hover:opacity-70"
+          >
+            Google Fonts
+          </a>.</strong>{" "}
+          This is important for portability — when the map is displayed in Diplicity, the font
+          needs to load correctly for all players. Google Fonts are freely available and can be
+          embedded in the exported file. If you use a font that isn't on Google Fonts, other
+          players may see a fallback font instead and your map may look different from what you
+          designed.
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">
           These are the names players will see in the game, so use the spellings you want to
           appear on screen.
