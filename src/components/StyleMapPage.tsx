@@ -386,6 +386,12 @@ export function StyleMapPage() {
                   checked. This is what lets the dSVG Creator read your province names — without it,
                   all the renaming you did will be lost.
                 </li>
+                <li>
+                  Ensure <strong>"Outline text"</strong> is <strong>disabled</strong> — unless
+                  you've already manually outlined specific text layers that use non-Google fonts.
+                  Leaving it on will outline all text, which bloats the file and prevents font
+                  embedding for layers that don't need it.
+                </li>
               </ul>
               <p>
                 Then select <strong>SVG</strong> as the format and export. That file is what you'll
