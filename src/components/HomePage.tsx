@@ -71,74 +71,78 @@ export function HomePage() {
 
       <main>
         {/* ── Hero ────────────────────────────────────────────────────────────── */}
-        <section className="mx-auto max-w-7xl px-6 pt-16 pb-12">
-          <div className="mb-10 flex flex-col items-center text-center">
-            <img
-              src="/diplicity-icon.png"
-              alt="Diplicity"
-              className="mb-6 h-16 w-16 rounded-2xl shadow-lg"
-            />
-            <h1 className="mb-4 text-5xl font-bold tracking-tight lg:text-6xl">
-              Create Custom<br />Diplomacy Variants
-            </h1>
-            <p className="mb-8 max-w-xl text-lg text-muted-foreground">
-              Design maps, define game rules, and publish playable Diplomacy
-              variants directly to Diplicity.
-            </p>
-            <div className="flex flex-wrap justify-center gap-3">
-              <Button size="lg" onClick={() => navigate("/dsvg-creator")}>
-                dSVG Creator
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button size="lg" variant="outline" onClick={() => navigate("/dvar-creator")}>
-                dVAR Creator
-              </Button>
-            </div>
-          </div>
+        <section className="mx-auto max-w-7xl px-6 py-14">
+          <div className="grid gap-10 lg:grid-cols-[3fr_2fr] lg:items-center">
 
-          {/* ── Map mosaic ──────────────────────────────────────────────────── */}
-          <div
-            className="hidden gap-1.5 overflow-hidden rounded-2xl shadow-2xl md:grid"
-            style={{
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gridTemplateRows: "210px 210px 210px",
-              gridTemplateAreas: `
-                "coldwar coldwar hundred"
-                "south   vietnam  hundred"
-                "classical spice  spice"
-              `,
-            }}
-          >
-            {MOSAIC.map(({ src, label, area }) => (
+            {/* ── Map mosaic (left) ──────────────────────────────────────────── */}
+            <div className="overflow-hidden rounded-2xl shadow-2xl">
+              {/* Desktop: named-area grid */}
               <div
-                key={area}
-                className="group relative overflow-hidden"
-                style={{ gridArea: area }}
+                className="hidden gap-1.5 lg:grid"
+                style={{
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gridTemplateRows: "150px 150px 150px",
+                  gridTemplateAreas: `
+                    "coldwar coldwar hundred"
+                    "south   vietnam  hundred"
+                    "classical spice  spice"
+                  `,
+                }}
               >
-                <img
-                  src={src}
-                  alt={label}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                <span className="absolute bottom-3 left-3 rounded-md bg-black/60 px-2.5 py-1 text-xs font-semibold text-white opacity-0 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100">
-                  {label}
-                </span>
+                {MOSAIC.map(({ src, label, area }) => (
+                  <div
+                    key={area}
+                    className="group relative overflow-hidden"
+                    style={{ gridArea: area }}
+                  >
+                    <img
+                      src={src}
+                      alt={label}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                    <span className="absolute bottom-3 left-3 rounded-md bg-black/60 px-2.5 py-1 text-xs font-semibold text-white opacity-0 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100">
+                      {label}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* Mobile: simple 2-column grid */}
-          <div className="grid grid-cols-2 gap-1.5 overflow-hidden rounded-2xl md:hidden">
-            {MOSAIC.map(({ src, label, area }) => (
-              <div key={area} className="relative aspect-video overflow-hidden">
-                <img
-                  src={src}
-                  alt={label}
-                  className="h-full w-full object-cover"
-                />
+              {/* Mobile: simple 2-column grid */}
+              <div className="grid grid-cols-2 gap-1.5 lg:hidden">
+                {MOSAIC.map(({ src, label }) => (
+                  <div key={label} className="relative aspect-video overflow-hidden">
+                    <img src={src} alt={label} className="h-full w-full object-cover" />
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* ── Text (right) ───────────────────────────────────────────────── */}
+            <div className="flex flex-col items-start">
+              <img
+                src="/diplicity-icon.png"
+                alt="Diplicity"
+                className="mb-5 h-14 w-14 rounded-2xl shadow-lg"
+              />
+              <h1 className="mb-4 text-4xl font-bold tracking-tight xl:text-5xl">
+                Create Custom Diplomacy Variants
+              </h1>
+              <p className="mb-8 text-lg text-muted-foreground">
+                Design maps, define game rules, and publish playable Diplomacy
+                variants directly to Diplicity.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button size="lg" onClick={() => navigate("/dsvg-creator")}>
+                  dSVG Creator
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+                <Button size="lg" variant="outline" onClick={() => navigate("/dvar-creator")}>
+                  dVAR Creator
+                </Button>
+              </div>
+            </div>
+
           </div>
         </section>
 
