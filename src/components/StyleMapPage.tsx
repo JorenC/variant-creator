@@ -130,6 +130,15 @@ const LAYERS: LayerInfo[] = [
           These are the names players will see in the game, so use the spellings you want to
           appear on screen.
         </p>
+        <p className="mt-2">
+          If you want to add <strong>ornamental names</strong> — for example in a different
+          script, a stylised calligraphy font, or with decorative flourishes — it's usually
+          better to place those in a separate group inside the <strong>foreground</strong> layer
+          instead. The names layer is used by Diplicity to toggle labels on and off during
+          gameplay, so it works best with clean, readable text. Ornamental versions are purely
+          visual decoration and don't need to be toggled, so the foreground layer is a more
+          natural home for them.
+        </p>
       </>
     ),
   },
