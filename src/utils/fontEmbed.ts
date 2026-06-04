@@ -216,8 +216,14 @@ export async function embedFonts(
   const doc = parser.parseFromString(svgString, "image/svg+xml");
   const root = doc.documentElement;
 
-  let styleEl = root.querySelector("style");
-  if (!styleEl) {
+  // querySelector("style") resolves to HTMLStyleElement via the HTML overload, which
+  // is incompatible with the SVGStyleElement returned by createElementNS. Cast to the
+  // common base type so both sources are assignable.
+  const existingStyleEl = root.querySelector("style") as Element | null;
+  let styleEl: Element;
+  if (existingStyleEl) {
+    styleEl = existingStyleEl;
+  } else {
     styleEl = doc.createElementNS(SVG_NS, "style");
     root.insertBefore(styleEl, root.firstChild);
   }
