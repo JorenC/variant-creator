@@ -11,12 +11,13 @@ export interface AppHeaderStep {
 interface AppHeaderProps {
   steps?: AppHeaderStep[];
   currentStep?: string;
+  title?: string;
   filename?: string | null;
   onClear?: () => void;
   actions?: React.ReactNode;
 }
 
-export function AppHeader({ steps, currentStep, filename, onClear, actions }: AppHeaderProps) {
+export function AppHeader({ steps, currentStep, title, filename, onClear, actions }: AppHeaderProps) {
   const navigate = useNavigate();
 
   const currentIdx = steps && currentStep
@@ -45,6 +46,9 @@ export function AppHeader({ steps, currentStep, filename, onClear, actions }: Ap
         {/* Stepper — centered, shown when steps are provided */}
         {steps && currentIdx >= 0 && (
           <div className="flex flex-1 items-center justify-center">
+            {title && (
+              <span className="mr-4 text-sm text-muted-foreground">{title}</span>
+            )}
             <div className="flex items-center">
               {steps.map((s, i) => {
                 const isActive = i === currentIdx;

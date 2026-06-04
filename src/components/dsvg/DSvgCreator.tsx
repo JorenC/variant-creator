@@ -8,7 +8,7 @@ import { LayerPreview } from "@/components/dsvg/LayerPreview";
 import { NamedCoastEditor } from "@/components/dsvg/NamedCoastEditor";
 import { UnitPositionEditor } from "@/components/dsvg/UnitPositionEditor";
 import { DsvgExport } from "@/components/dsvg/DsvgExport";
-import { parseSvgTree, validateAnySvg } from "@/utils/svgTree";
+import { parseSvgTree, flattenTree, validateAnySvg } from "@/utils/svgTree";
 import type { SvgTreeNode } from "@/utils/svgTree";
 import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
 import type { LayerPreviewHandle } from "@/components/dsvg/LayerPreview";
@@ -16,6 +16,19 @@ import type { NamedCoastEditorHandle } from "@/components/dsvg/NamedCoastEditor"
 import type { UnitPositionEditorHandle } from "@/components/dsvg/UnitPositionEditor";
 
 type Step = "upload" | "assign" | "preview" | "named-coasts" | "unit-positions" | "done";
+
+function autoDetectAssignments(svgTree: SvgTreeNode[]): LayerAssignments {
+  const flat = flattenTree(svgTree);
+  const find = (target: string) =>
+    flat.find(n => n.name.toLowerCase() === target)?.key ?? null;
+  return {
+    provinces: find("provinces"),
+    namedCoasts: find("named-coasts"),
+    unitPositions: find("unit-positions"),
+    provinceNames: find("names"),
+    borders: find("borders"),
+  };
+}
 
 const DEFAULT_ASSIGNMENTS: LayerAssignments = {
   provinces: null,
@@ -35,7 +48,7 @@ const STEP_TITLES: Record<Exclude<Step, "upload">, string> = {
 
 const STEP_SUBTITLES: Record<Exclude<Step, "upload">, string> = {
   assign: "Map your SVG layers to provinces and named coasts.",
-  preview: "Review layers and set province abbreviations.",
+  preview: "Review the province layer naming. Each should be a three-letter code.",
   "named-coasts": "Assign parent provinces and abbreviations to each named coast.",
   "unit-positions": "Assign a three-letter code to each unit position marker.",
   done: "Toggle layer visibility and download your dSVG file.",
@@ -90,11 +103,12 @@ export function DSvgCreator() {
       return;
     }
 
+    const parsed = parseSvgTree(content);
     setError(null);
     setFileName(file.name);
     setSvgContent(content);
-    setTree(parseSvgTree(content));
-    setAssignments(DEFAULT_ASSIGNMENTS);
+    setTree(parsed);
+    setAssignments(autoDetectAssignments(parsed));
     setProvinceAbbrs({});
     setUnitPositionCodes({});
     setStep("assign");
@@ -156,6 +170,7 @@ export function DSvgCreator() {
     <AppHeader
       steps={DSVG_STEPS}
       currentStep={step}
+      title="dSVG creator"
       filename={fileName}
       onClear={handleClear}
     />
@@ -164,9 +179,17 @@ export function DSvgCreator() {
         {step === "upload" ? (
           <>
             <div>
-              <h1 className="text-3xl font-bold">Upload your map</h1>
-              <p className="mt-1 text-muted-foreground">Drop any SVG file here to begin.</p>
+              <h1 className="text-3xl font-bold">dSVG creator</h1>
+              <p className="mt-1 text-muted-foreground">
+                This tool takes your SVG map file and produces a <strong>dSVG</strong>{" "}file that Diplicity can read. We&apos;ll walk through it step by step.
+              </p>
             </div>
+
+            <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+              If you need to make small changes to the map (e.g. adjust a border), you can re-upload the new exported SVG and generate a fresh dSVG — as long as your objects are still named the same and none were added. You don&apos;t need to update the dVAR file unless connections, supply centers, or other game-rule data changed.
+            </p>
+
+            <p className="font-medium">Upload your SVG to start</p>
 
             <div
               role="button"

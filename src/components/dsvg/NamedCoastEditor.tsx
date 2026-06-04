@@ -255,7 +255,11 @@ export const NamedCoastEditor = forwardRef<
     );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+    <div className="flex flex-col gap-6">
+      <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+        Link each named coast to its parent province using the dropdown, then add its abbreviation code (e.g. <code className="font-mono">nc</code>, <code className="font-mono">sc</code>). If your SVG IDs follow the <code className="font-mono">province/coast</code> convention (e.g. <code className="font-mono">stp/nc</code>), this fills in automatically. The full coast identifier needs to match the named coast exactly — for example <code className="font-mono">kie/sc</code> or <code className="font-mono">mek/river</code>.
+      </p>
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
       {formContent}
 
       <div className="relative w-full" style={{ aspectRatio }}>
@@ -285,6 +289,7 @@ export const NamedCoastEditor = forwardRef<
             </svg>
           </>
         )}
+      </div>
       </div>
     </div>
   );

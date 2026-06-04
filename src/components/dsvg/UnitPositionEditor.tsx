@@ -251,7 +251,11 @@ export const UnitPositionEditor = forwardRef<
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+    <div className="flex flex-col gap-6">
+      <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+        The code must match the province abbreviation the unit sits in. If your SVG element IDs are named correctly, this fills in automatically.
+      </p>
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
       {formContent}
 
       <div className="relative w-full" style={{ aspectRatio }}>
@@ -272,6 +276,7 @@ export const UnitPositionEditor = forwardRef<
             </svg>
           </>
         )}
+      </div>
       </div>
     </div>
   );

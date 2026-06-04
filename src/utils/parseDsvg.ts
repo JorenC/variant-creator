@@ -13,6 +13,17 @@ export function validateDsvg(svgContent: string): string | null {
   return null;
 }
 
+function collectLayerIds(el: Element, result: string[]): void {
+  for (const child of Array.from(el.children)) {
+    const id = child.getAttribute("id");
+    if (id) {
+      result.push(id);
+    } else {
+      collectLayerIds(child, result);
+    }
+  }
+}
+
 export function parseDsvg(svgContent: string): ParsedDsvg {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -21,20 +32,10 @@ export function parseDsvg(svgContent: string): ParsedDsvg {
   const namedCoastIds: string[] = [];
 
   const provincesLayer = doc.getElementById("provinces");
-  if (provincesLayer) {
-    for (const child of Array.from(provincesLayer.children)) {
-      const id = child.getAttribute("id");
-      if (id) provinceIds.push(id);
-    }
-  }
+  if (provincesLayer) collectLayerIds(provincesLayer, provinceIds);
 
   const namedCoastsLayer = doc.getElementById("named-coasts");
-  if (namedCoastsLayer) {
-    for (const child of Array.from(namedCoastsLayer.children)) {
-      const id = child.getAttribute("id");
-      if (id) namedCoastIds.push(id);
-    }
-  }
+  if (namedCoastsLayer) collectLayerIds(namedCoastsLayer, namedCoastIds);
 
   return { provinceIds, namedCoastIds };
 }

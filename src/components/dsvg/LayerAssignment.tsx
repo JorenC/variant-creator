@@ -39,11 +39,11 @@ const LAYER_FIELDS: {
     key: "unitPositions",
     label: "Unit Positions",
     description:
-      "Reference markers for where units are placed on the map. Each circle should have an ID matching a province abbreviation. Optional.",
+      "Reference markers for where units are placed on the map. Each circle should have an ID matching a province abbreviation.",
   },
   {
     key: "provinceNames",
-    label: "Province Names",
+    label: "Names",
     description:
       "Text labels for provinces. Rendered above province fills and supply-center markers. Optional.",
   },
@@ -100,7 +100,7 @@ export function LayerAssignment({
             — Reference markers for unit placement (hidden at runtime).
           </li>
           <li>
-            <span className="font-medium text-foreground">province-names</span>{" "}
+            <span className="font-medium text-foreground">names</span>{" "}
             — Text labels for provinces.
           </li>
           <li>
@@ -123,7 +123,7 @@ export function LayerAssignment({
       <div className="grid gap-10 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <p className="text-sm font-medium">
-            Assign your SVG layers to the three named layers. All fields are optional.
+            Assign your SVG layers to the named layers. Provinces and unit positions are required; all others are optional.
           </p>
 
           {LAYER_FIELDS.map(({ key, label, description }) => (

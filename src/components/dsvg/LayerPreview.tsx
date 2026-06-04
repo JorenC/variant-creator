@@ -142,6 +142,10 @@ export const LayerPreview = forwardRef<LayerPreviewHandle, LayerPreviewProps>(
         : [];
 
     return (
+      <div className="flex flex-col gap-6">
+      <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+        Your SVG element IDs are used to auto-complete the abbreviations, so good naming in Inkscape pays off here. If you see an unexpected suffix like <code className="font-mono">kie2</code> it usually means a duplicate ID — go back to your original SVG, fix it, and re-export. Click any input field to see the province highlighted on the map.
+      </p>
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <ProvinceIdList
           provinces={provinces}
@@ -172,6 +176,7 @@ export const LayerPreview = forwardRef<LayerPreviewHandle, LayerPreviewProps>(
             </>
           )}
         </div>
+      </div>
       </div>
     );
   }

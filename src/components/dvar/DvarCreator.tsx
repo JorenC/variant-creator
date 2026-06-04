@@ -73,7 +73,8 @@ type Step =
   | "reconcile"
   | "basic-info"
   | "nations"
-  | "provinces"
+  | "province-names"
+  | "province-types"
   | "home-nations"
   | "adjacencies"
   | "dominance-rules"
@@ -158,21 +159,32 @@ const nationsSchema = z.object({
     ),
 });
 
-const namedCoastEntrySchema = z.object({
+const provinceNameEntrySchema = z.object({
   id: z.string(),
   name: z.string().min(1, "Name is required"),
+  type: z.string().optional(),
+  supplyCenter: z.boolean().optional(),
+  namedCoasts: z.array(z.object({
+    id: z.string(),
+    name: z.string().min(1, "Name is required"),
+  })),
 });
 
-const provinceEntrySchema = z.object({
-  id: z.string(),
-  name: z.string().min(1, "Name is required"),
-  type: z.enum(["land", "sea", "coastal"], { error: "Province type is required" }),
-  supplyCenter: z.boolean(),
-  namedCoasts: z.array(namedCoastEntrySchema),
+const provincesNamesSchema = z.object({
+  provinces: z.array(provinceNameEntrySchema),
 });
 
 const provincesFormSchema = z.object({
-  provinces: z.array(provinceEntrySchema),
+  provinces: z.array(z.object({
+    id: z.string(),
+    name: z.string().min(1, "Name is required"),
+    type: z.enum(["land", "sea", "coastal"], { error: "Province type is required" }),
+    supplyCenter: z.boolean(),
+    namedCoasts: z.array(z.object({
+      id: z.string(),
+      name: z.string().min(1, "Name is required"),
+    })),
+  })),
 });
 
 type BasicInfoValues = z.infer<typeof basicInfoSchema>;
@@ -545,7 +557,8 @@ const DVAR_STEPS = [
   { key: "upload",                  label: "Upload"        },
   { key: "basic-info",              label: "Basic info"    },
   { key: "nations",                 label: "Nations"       },
-  { key: "provinces",               label: "Provinces"     },
+  { key: "province-names",           label: "Human names"   },
+  { key: "province-types",           label: "Coasts"        },
   { key: "home-nations",            label: "Home nations"  },
   { key: "adjacencies",             label: "Adjacencies"   },
   { key: "dominance-rules",         label: "Dominance"     },
@@ -564,9 +577,13 @@ const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; 
     title: "Nations",
     subtitle: "Define the playable powers, their names, and their colours.",
   },
-  provinces: {
-    title: "Provinces",
-    subtitle: "Name every province and coast. Hover a row to locate it on the map.",
+  "province-names": {
+    title: "Human names",
+    subtitle: "Give every province and coast a human-readable name. Hover a row to locate it on the map.",
+  },
+  "province-types": {
+    title: "Coasts",
+    subtitle: "Set the type (L / C / S) and mark supply centers for each province.",
   },
   "home-nations": {
     title: "Home Nations",
@@ -632,7 +649,8 @@ export function DvarCreator() {
   const adjudicationModifiersRef = useRef<AdjudicationModifiersFormHandle>(null);
   const basicInfoFormId = useId();
   const nationsFormId = useId();
-  const provincesFormId = useId();
+  const provinceNamesFormId = useId();
+  const provinceTypesFormId = useId();
 
   const processDvarFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".dvar")) {
@@ -870,8 +888,9 @@ export function DvarCreator() {
     if (step === "reconcile") handleClear();
     if (step === "basic-info") handleClear();
     if (step === "nations") setStep("basic-info");
-    if (step === "provinces") setStep("nations");
-    if (step === "home-nations") setStep("provinces");
+    if (step === "province-names") setStep("nations");
+    if (step === "province-types") setStep("province-names");
+    if (step === "home-nations") setStep("province-types");
     if (step === "adjacencies") setStep("home-nations");
     if (step === "dominance-rules") setStep("adjacencies");
     if (step === "phase-progression") setStep("dominance-rules");
@@ -887,10 +906,15 @@ export function DvarCreator() {
 
   const handleNationsSubmit = (values: NationsValues) => {
     setNations(values.nations);
-    setStep("provinces");
+    setStep("province-names");
   };
 
-  const handleProvincesSubmit = (values: ProvincesFormValues) => {
+  const handleProvinceNamesSubmit = (values: ProvincesFormValues) => {
+    setProvincesData(values);
+    setStep("province-types");
+  };
+
+  const handleProvinceTypesSubmit = (values: ProvincesFormValues) => {
     setProvincesData(values);
     setAdjacenciesData(
       prev => prev ?? buildEmptyDvarAdjacencyMap([
@@ -964,7 +988,8 @@ export function DvarCreator() {
   const currentFormId =
     step === "basic-info" ? basicInfoFormId :
     step === "nations" ? nationsFormId :
-    step === "provinces" ? provincesFormId :
+    step === "province-names" ? provinceNamesFormId :
+    step === "province-types" ? provinceTypesFormId :
     null;
 
   return (
@@ -972,6 +997,7 @@ export function DvarCreator() {
     <AppHeader
       steps={DVAR_STEPS}
       currentStep={step === "reconcile" ? "upload" : step}
+      title="dVAR creator"
       filename={fileName}
       onClear={handleClear}
     />
@@ -985,6 +1011,10 @@ export function DvarCreator() {
                 Upload a dSVG file to begin building your variant definition.
               </p>
             </div>
+
+            <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+              In this tool you will add the metadata for your variant — province names, nations, connections, and victory conditions. The dSVG is needed first so the tool can parse the map. If you already have a dVAR from a previous session or an existing variant you want to update, upload it alongside the dSVG and all known information will be auto-filled, so you can move through quickly and only fix what has changed.
+            </p>
 
             <div className="grid gap-4 sm:grid-cols-2">
               {/* Required: dSVG */}
@@ -1135,16 +1165,31 @@ export function DvarCreator() {
               />
             )}
 
-            {step === "provinces" && svgContent && parsedDsvg && (
+            {step === "province-names" && svgContent && parsedDsvg && (
               <ProvincesForm
-                formId={provincesFormId}
+                formId={provinceNamesFormId}
                 svgContent={svgContent}
+                mode="names"
                 defaultValues={
-                  provincesData
+                  provincesData && provincesData.provinces.length > 0
                     ? { provinces: [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id)) }
                     : { provinces: buildInitialProvinces(parsedDsvg) }
                 }
-                onSubmit={handleProvincesSubmit}
+                onSubmit={handleProvinceNamesSubmit}
+              />
+            )}
+
+            {step === "province-types" && svgContent && parsedDsvg && (
+              <ProvincesForm
+                formId={provinceTypesFormId}
+                svgContent={svgContent}
+                mode="types"
+                defaultValues={
+                  provincesData && provincesData.provinces.length > 0
+                    ? { provinces: [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id)) }
+                    : { provinces: buildInitialProvinces(parsedDsvg) }
+                }
+                onSubmit={handleProvinceTypesSubmit}
               />
             )}
 
@@ -1568,6 +1613,7 @@ function NationsForm({ formId, defaultValues, onSubmit }: NationsFormProps) {
 interface ProvincesFormProps {
   formId: string;
   svgContent: string;
+  mode: "names" | "types";
   defaultValues: ProvincesFormValues;
   onSubmit: (values: ProvincesFormValues) => void;
 }
@@ -1578,7 +1624,7 @@ const PROVINCE_TYPE_COLORS: Record<string, string> = {
   sea: "#fde047",
 };
 
-function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: ProvincesFormProps) {
+function ProvincesForm({ formId, svgContent, mode, defaultValues, onSubmit }: ProvincesFormProps) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1589,7 +1635,7 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
     watch,
     formState: { errors },
   } = useForm<ProvincesFormValues>({
-    resolver: zodResolver(provincesFormSchema),
+    resolver: zodResolver(mode === "names" ? provincesNamesSchema : provincesFormSchema),
     defaultValues,
   });
 
@@ -1605,8 +1651,8 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
   }, [watchedProvinces]);
 
   const previewSvg = useMemo(
-    () => buildProvincePreviewSvg(svgContent, highlightedId, typeColorMap),
-    [svgContent, highlightedId, typeColorMap]
+    () => buildProvincePreviewSvg(svgContent, highlightedId, mode === "types" ? typeColorMap : {}),
+    [svgContent, highlightedId, mode, typeColorMap]
   );
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -1631,7 +1677,6 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
     if (blurTimer.current !== null) clearTimeout(blurTimer.current);
     setHighlightedId(id);
   };
-
   const handleGroupBlur = () => {
     blurTimer.current = setTimeout(() => setHighlightedId(null), 0);
   };
@@ -1642,121 +1687,137 @@ function ProvincesForm({ formId, svgContent, defaultValues, onSubmit }: Province
     <form id={formId} onSubmit={handleSubmit(onSubmit)}>
       {hasErrors && (
         <p className="mb-4 text-sm text-destructive">
-          Please fill in all names and select a type (L/C/S) for every province before proceeding.
+          {mode === "names"
+            ? "Please fill in all names before proceeding."
+            : "Please select a type (L/C/S) for every province before proceeding."}
         </p>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-1">
-        <div className="pr-2 text-right text-xs text-muted-foreground">
-          {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
-        </div>
-        <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
-          {defaultValues.provinces.map((province, i) => (
-            <div
-              key={province.id}
-              onMouseEnter={() => setHighlightedId(province.id)}
-              onMouseLeave={() => setHighlightedId(null)}
-              onFocus={() => handleGroupFocus(province.id)}
-              onBlur={handleGroupBlur}
-            >
-              <div
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
-                  highlightedId === province.id
-                    ? "bg-yellow-50 dark:bg-yellow-950/30"
-                    : "hover:bg-muted/40"
-                )}
-              >
-                <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
-                  {province.id}
-                </span>
-                <Input
-                  {...register(`provinces.${i}.name`)}
-                  placeholder="Human name"
-                  autoComplete="off"
-                  aria-invalid={!!errors.provinces?.[i]?.name}
-                  className="h-7 text-sm"
-                />
-                <div className={cn(
-                  "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1",
-                  errors.provinces?.[i]?.type && "border-destructive"
-                )}>
-                  {(["land", "sea", "coastal"] as const).map(t => (
-                    <Controller
-                      key={t}
-                      control={control}
-                      name={`provinces.${i}.type`}
-                      render={({ field }) => (
-                        <label className="relative flex cursor-pointer items-center">
-                          <input
-                            type="radio"
-                            className="absolute opacity-0 w-0 h-0"
-                            value={t}
-                            checked={field.value === t}
-                            onChange={() => field.onChange(t)}
-                          />
-                          <span
-                            className={cn(
-                              "rounded px-1 py-0.5 text-xs font-medium transition-colors",
-                              field.value === t
-                                ? "bg-primary text-primary-foreground"
-                                : "text-muted-foreground hover:text-foreground"
-                            )}
-                          >
-                            {t[0].toUpperCase()}
-                          </span>
-                        </label>
-                      )}
-                    />
-                  ))}
-                </div>
-                <Controller
-                  control={control}
-                  name={`provinces.${i}.supplyCenter`}
-                  render={({ field }) => (
-                    <label className="flex shrink-0 cursor-pointer items-center gap-1">
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                      <span className="text-xs text-muted-foreground">SC</span>
-                    </label>
-                  )}
-                />
-              </div>
-
-              {province.namedCoasts.length > 0 && (
-                <div className="ml-4 space-y-0.5 border-l-2 border-muted pl-3">
-                  {province.namedCoasts.map((coast, j) => (
-                    <div
-                      key={coast.id}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
-                        highlightedId === province.id
-                          ? "bg-yellow-50 dark:bg-yellow-950/30"
-                          : "hover:bg-muted/40"
-                      )}
-                    >
-                      <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
-                        {coast.id}
-                      </span>
-                      <Input
-                        {...register(`provinces.${i}.namedCoasts.${j}.name`)}
-                        placeholder="Human name"
-                        autoComplete="off"
-                        aria-invalid={
-                          !!errors.provinces?.[i]?.namedCoasts?.[j]?.name
-                        }
-                        className="h-7 text-sm"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+          {mode === "types" && (
+            <div className="pr-2 text-right text-xs text-muted-foreground">
+              {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
             </div>
-          ))}
-        </div>
+          )}
+          {mode === "names" && (
+            <div className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
+              <span className="w-16 shrink-0">Abbreviation</span>
+              <span>Human name</span>
+            </div>
+          )}
+          <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
+            {defaultValues.provinces.map((province, i) => (
+              <div
+                key={province.id}
+                onMouseEnter={() => setHighlightedId(province.id)}
+                onMouseLeave={() => setHighlightedId(null)}
+                onFocus={() => handleGroupFocus(province.id)}
+                onBlur={handleGroupBlur}
+              >
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
+                    highlightedId === province.id
+                      ? "bg-yellow-50 dark:bg-yellow-950/30"
+                      : "hover:bg-muted/40"
+                  )}
+                >
+                  <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                    {province.id}
+                  </span>
+
+                  {mode === "names" && (
+                    <Input
+                      {...register(`provinces.${i}.name`)}
+                      placeholder="Human name"
+                      autoComplete="off"
+                      aria-invalid={!!errors.provinces?.[i]?.name}
+                      className="h-7 text-sm"
+                    />
+                  )}
+
+                  {mode === "types" && (
+                    <>
+                      <div className={cn(
+                        "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1",
+                        errors.provinces?.[i]?.type && "border-destructive"
+                      )}>
+                        {(["land", "sea", "coastal"] as const).map(t => (
+                          <Controller
+                            key={t}
+                            control={control}
+                            name={`provinces.${i}.type`}
+                            render={({ field }) => (
+                              <label className="relative flex cursor-pointer items-center">
+                                <input
+                                  type="radio"
+                                  className="absolute opacity-0 w-0 h-0"
+                                  value={t}
+                                  checked={field.value === t}
+                                  onChange={() => field.onChange(t)}
+                                />
+                                <span
+                                  className={cn(
+                                    "rounded px-1 py-0.5 text-xs font-medium transition-colors",
+                                    field.value === t
+                                      ? "bg-primary text-primary-foreground"
+                                      : "text-muted-foreground hover:text-foreground"
+                                  )}
+                                >
+                                  {t[0].toUpperCase()}
+                                </span>
+                              </label>
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <Controller
+                        control={control}
+                        name={`provinces.${i}.supplyCenter`}
+                        render={({ field }) => (
+                          <label className="flex shrink-0 cursor-pointer items-center gap-1">
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                            <span className="text-xs text-muted-foreground">SC</span>
+                          </label>
+                        )}
+                      />
+                    </>
+                  )}
+                </div>
+
+                {mode === "names" && province.namedCoasts.length > 0 && (
+                  <div className="ml-4 space-y-0.5 border-l-2 border-muted pl-3">
+                    {province.namedCoasts.map((coast, j) => (
+                      <div
+                        key={coast.id}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md px-2 py-1 transition-colors",
+                          highlightedId === province.id
+                            ? "bg-yellow-50 dark:bg-yellow-950/30"
+                            : "hover:bg-muted/40"
+                        )}
+                      >
+                        <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                          {coast.id}
+                        </span>
+                        <Input
+                          {...register(`provinces.${i}.namedCoasts.${j}.name`)}
+                          placeholder="Human name"
+                          autoComplete="off"
+                          aria-invalid={!!errors.provinces?.[i]?.namedCoasts?.[j]?.name}
+                          className="h-7 text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="sticky top-8 self-start">

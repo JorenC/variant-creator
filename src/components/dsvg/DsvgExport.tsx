@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Download, ChevronDown, ChevronRight, Loader2, CheckCircle2, AlertCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,6 +19,7 @@ interface DsvgExportProps {
 }
 
 export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, fileName }: DsvgExportProps) {
+  const navigate = useNavigate();
   const displayNodes = useMemo(
     () => tree.flatMap(n => (n.children.length > 0 ? n.children : [n])),
     [tree]
@@ -82,7 +84,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
     [svgContent, displayNodes, visibleKeys]
   );
 
-  const [embedFontsEnabled, setEmbedFontsEnabled] = useState(false);
+  const [embedFontsEnabled, setEmbedFontsEnabled] = useState(true);
   const [fontCheckLoading, setFontCheckLoading] = useState(false);
   const [fontInfo, setFontInfo] = useState<SvgFontInfo | null>(null);
   const [uploadedFonts, setUploadedFonts] = useState<Map<string, ArrayBuffer>>(new Map());
@@ -259,14 +261,25 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
         </Button>
       </div>
 
-      <div className="relative w-full" style={{ aspectRatio }}>
-        {previewUrl && (
-          <img
-            src={previewUrl}
-            alt="SVG layer preview"
-            className="h-full w-full rounded-lg border object-contain"
-          />
-        )}
+      <div className="flex flex-col gap-4">
+        <div className="relative w-full" style={{ aspectRatio }}>
+          {previewUrl && (
+            <img
+              src={previewUrl}
+              alt="SVG layer preview"
+              className="h-full w-full rounded-lg border object-contain"
+            />
+          )}
+        </div>
+
+        <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+          The SVG should now be ready for download. You can check the layers to see if everything looks good and if the fonts were embedded correctly. After this, you can continue with the dVAR creator to add the metadata.
+        </p>
+
+        <Button variant="outline" onClick={() => navigate("/dvar-creator")}>
+          Continue to dVAR creator
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
