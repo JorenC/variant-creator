@@ -16,6 +16,7 @@ export interface LayerAssignments {
   unitPositions: string | null;
   provinceNames: string | null;
   borders: string | null;
+  supplyCenters: string | null;
 }
 
 const LAYER_FIELDS: {
@@ -52,6 +53,12 @@ const LAYER_FIELDS: {
     label: "Borders",
     description:
       "Province border lines. Rendered above province names. Optional.",
+  },
+  {
+    key: "supplyCenters",
+    label: "Supply Centers",
+    description:
+      "Supply center markers. Rendered above borders in the foreground. Auto-detected from layers named 'SCs'. Optional.",
   },
 ];
 
@@ -106,6 +113,10 @@ export function LayerAssignment({
           <li>
             <span className="font-medium text-foreground">borders</span> —
             Province border lines.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">supply-centers</span> —
+            Supply center markers, rendered above borders.
           </li>
           <li>
             <span className="font-medium text-foreground">foreground</span> —

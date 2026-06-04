@@ -27,6 +27,7 @@ function autoDetectAssignments(svgTree: SvgTreeNode[]): LayerAssignments {
     unitPositions: find("unit-positions"),
     provinceNames: find("names"),
     borders: find("borders"),
+    supplyCenters: find("scs"),
   };
 }
 
@@ -36,6 +37,7 @@ const DEFAULT_ASSIGNMENTS: LayerAssignments = {
   unitPositions: null,
   provinceNames: null,
   borders: null,
+  supplyCenters: null,
 };
 
 const STEP_TITLES: Record<Exclude<Step, "upload">, string> = {

@@ -265,6 +265,7 @@ export function buildDsvgOutput(
   const unitPositionsEl = cloneByKey(assignments.unitPositions);
   const provinceNamesEl = cloneByKey(assignments.provinceNames);
   const bordersEl = cloneByKey(assignments.borders);
+  const supplyCentersEl = cloneByKey(assignments.supplyCenters);
 
   // 4. Classify sibling groups as background/foreground
   const backgroundNodes: Element[] = [];
@@ -294,6 +295,7 @@ export function buildDsvgOutput(
         assignments.unitPositions,
         assignments.provinceNames,
         assignments.borders,
+        assignments.supplyCenters,
       ]) {
         if (!key) continue;
         const kPath = key.replace(/^root-/, "").split("-").map(Number);
@@ -330,7 +332,7 @@ export function buildDsvgOutput(
 
   // 6. Build clean output document in canonical layer order:
   //    background → provinces → named-coasts → unit-positions →
-  //    province-names → borders → foreground
+  //    province-names → borders → supply-centers → foreground
   while (root.firstChild) root.removeChild(root.firstChild);
   headerNodes.forEach(n => root.appendChild(n));
 
@@ -419,6 +421,12 @@ export function buildDsvgOutput(
   const bLayer = bordersEl ?? makeLayerGroup(doc, "borders");
   bLayer.setAttribute("id", "borders");
   root.appendChild(bLayer);
+
+  if (supplyCentersEl) {
+    supplyCentersEl.setAttribute("id", "supply-centers");
+    supplyCentersEl.setAttribute("style", "display:inline");
+    root.appendChild(supplyCentersEl);
+  }
 
   const fg = makeLayerGroup(doc, "foreground");
   fg.setAttribute("style", "display:inline");

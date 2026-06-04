@@ -39,6 +39,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -81,7 +82,8 @@ type Step =
   | "phase-progression"
   | "victory-conditions"
   | "adjudication-modifiers"
-  | "export";
+  | "export"
+  | "upload-diplicity";
 
 type HomeNationsData = Record<string, { nation: string; startingUnit: "army" | "fleet" | null; startingCoast: string | null }>;
 
@@ -559,7 +561,7 @@ const DVAR_STEPS = [
   { key: "basic-info",              label: "Basic info"    },
   { key: "nations",                 label: "Nations"       },
   { key: "province-names",           label: "Human names"   },
-  { key: "province-types",           label: "Coasts"        },
+  { key: "province-types",           label: "Coasts & SCs"  },
   { key: "home-nations",            label: "Home nations"  },
   { key: "adjacencies",             label: "Adjacencies"   },
   { key: "dominance-rules",         label: "Dominance"     },
@@ -567,6 +569,7 @@ const DVAR_STEPS = [
   { key: "victory-conditions",      label: "Victory"       },
   { key: "adjudication-modifiers",  label: "Rules"         },
   { key: "export",                  label: "Export"        },
+  { key: "upload-diplicity",        label: "Upload"        },
 ];
 
 const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; subtitle: string }> = {
@@ -583,17 +586,16 @@ const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; 
     subtitle: "Give every province and coast a human-readable name. Hover a row to locate it on the map.",
   },
   "province-types": {
-    title: "Coasts",
-    subtitle: "Set the type (L / C / S) and mark supply centers for each province.",
+    title: "Coasts & SCs",
+    subtitle: "Here we set the type for each province (Land / Sea / Coastal) and whether they contain a supply center or not.",
   },
   "home-nations": {
     title: "Home Nations",
-    subtitle: "Assign each supply center to a home nation, or mark it neutral.",
+    subtitle: "Mark supply centers and starting units. Mark them as empty, owned by a nation or neutral.",
   },
   adjacencies: {
     title: "Adjacencies",
-    subtitle:
-      "Define which provinces border each other and what unit types may cross each connection.",
+    subtitle: "Set connections between provinces and the unit types that may cross each link.",
   },
   "dominance-rules": {
     title: "Dominance Rules",
@@ -601,11 +603,11 @@ const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; 
   },
   "phase-progression": {
     title: "Phase Progression",
-    subtitle: "Define the sequence of game phases and how the year advances.",
+    subtitle: "Phases run top to bottom and loop back. They can be named anything, but their type is limited to three possibilities. The last phase's year + increments the year on wrap-around.",
   },
   "victory-conditions": {
     title: "Victory Conditions",
-    subtitle: "Define how the game can end. Add multiple conditions — the first to fire wins.",
+    subtitle: "Define how the game can end. Add multiple conditions — the first to fire wins. This means players only have to meet one of these conditions, not all.",
   },
   "adjudication-modifiers": {
     title: "Game Rules",
@@ -614,6 +616,10 @@ const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; 
   export: {
     title: "Review & Export",
     subtitle: "Check your variant settings and download the .dvar file.",
+  },
+  "upload-diplicity": {
+    title: "Upload to Diplicity",
+    subtitle: "Upload your variant files to Diplicity.",
   },
 };
 
@@ -898,6 +904,7 @@ export function DvarCreator() {
     if (step === "victory-conditions") setStep("phase-progression");
     if (step === "adjudication-modifiers") setStep("victory-conditions");
     if (step === "export") setStep("adjudication-modifiers");
+    if (step === "upload-diplicity") setStep("export");
   };
 
   const handleBasicInfoSubmit = (values: BasicInfoValues) => {
@@ -1207,11 +1214,21 @@ export function DvarCreator() {
               const base = (provincesData && provincesData.provinces.length > 0)
                 ? [...provincesData.provinces].sort((a, b) => a.id.localeCompare(b.id))
                 : buildInitialProvinces(parsedDsvg);
+              const namedCoastParentIds = new Set(
+                base.filter(p => p.namedCoasts.length > 0).map(p => p.id)
+              );
               return (
                 <ProvinceTypesForm
                   formId={provinceTypesFormId}
                   svgContent={svgContent}
-                  defaultValues={{ provinces: base.map(p => ({ id: p.id, type: p.type, supplyCenter: p.supplyCenter })) }}
+                  namedCoastParentIds={namedCoastParentIds}
+                  defaultValues={{
+                    provinces: base.map(p => ({
+                      id: p.id,
+                      type: namedCoastParentIds.has(p.id) && !p.type ? "land" : p.type,
+                      supplyCenter: p.supplyCenter,
+                    })),
+                  }}
                   onSubmit={handleProvinceTypesSubmit}
                 />
               );
@@ -1306,6 +1323,10 @@ export function DvarCreator() {
               />
             )}
 
+            {step === "upload-diplicity" && (
+              <UploadDiplicityStep />
+            )}
+
             {step === "export" && basicInfo && nations && provincesData && homeNationsData && adjacenciesData && dominanceRulesData && phaseProgressionData && victoryConditionsData && (
               <ExportStep
                 basicInfo={basicInfo}
@@ -1332,8 +1353,13 @@ export function DvarCreator() {
                   Save progress
                 </Button>
 
-                {step !== "export" && (
-                  step === "home-nations" ? (
+                {step !== "upload-diplicity" && (
+                  step === "export" ? (
+                    <Button onClick={() => setStep("upload-diplicity")}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "home-nations" ? (
                     <Button onClick={() => homeNationsRef.current?.submit()}>
                       Next
                       <ChevronRight className="h-4 w-4" />
@@ -1747,11 +1773,68 @@ function ProvinceNamesForm({ formId, svgContent, defaultValues, onSubmit }: Prov
   );
 }
 
+// ─── SC auto-detection ───────────────────────────────────────────────────────
+
+function detectSCProvinces(svgContent: string): Set<string> {
+  const result = new Set<string>();
+
+  const container = document.createElement("div");
+  container.style.cssText = "position:absolute;left:-99999px;top:-99999px;visibility:hidden";
+  container.innerHTML = svgContent;
+  document.body.appendChild(container);
+
+  try {
+    const liveSvg = container.querySelector("svg") as SVGSVGElement | null;
+    if (!liveSvg) return result;
+
+    const liveSCs = liveSvg.getElementById("supply-centers");
+    const liveProvinces = liveSvg.getElementById("provinces");
+    if (!liveSCs || !liveProvinces) return result;
+
+    liveProvinces.removeAttribute("style");
+
+    const centers: { x: number; y: number }[] = [];
+    for (const child of Array.from(liveSCs.children)) {
+      const tag = child.tagName.toLowerCase();
+      let cx: number, cy: number;
+      if (tag === "circle") {
+        cx = parseFloat(child.getAttribute("cx") ?? "0");
+        cy = parseFloat(child.getAttribute("cy") ?? "0");
+      } else {
+        const bbox = (child as SVGGraphicsElement).getBBox();
+        cx = bbox.x + bbox.width / 2;
+        cy = bbox.y + bbox.height / 2;
+      }
+      centers.push({ x: cx, y: cy });
+    }
+
+    for (const center of centers) {
+      const pt = liveSvg.createSVGPoint();
+      pt.x = center.x;
+      pt.y = center.y;
+      for (const provEl of Array.from(liveProvinces.children)) {
+        if (provEl instanceof SVGGeometryElement && provEl.id) {
+          try {
+            if (provEl.isPointInFill(pt)) result.add(provEl.id);
+          } catch {
+            // ignore geometry errors on complex paths
+          }
+        }
+      }
+    }
+  } finally {
+    document.body.removeChild(container);
+  }
+
+  return result;
+}
+
 // ─── ProvinceTypesForm ────────────────────────────────────────────────────────
 
 interface ProvinceTypesFormProps {
   formId: string;
   svgContent: string;
+  namedCoastParentIds: Set<string>;
   defaultValues: ProvinceTypesFormValues;
   onSubmit: (values: ProvinceTypesFormValues) => void;
 }
@@ -1762,16 +1845,29 @@ const PROVINCE_TYPE_COLORS: Record<string, string> = {
   sea: "#3b82f6",
 };
 
-function ProvinceTypesForm({ formId, svgContent, defaultValues, onSubmit }: ProvinceTypesFormProps) {
+function ProvinceTypesForm({ formId, svgContent, namedCoastParentIds, defaultValues, onSubmit }: ProvinceTypesFormProps) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { control, handleSubmit, formState: { errors } } = useForm<ProvinceTypesFormValues>({
+  const { control, handleSubmit, setValue, formState: { errors } } = useForm<ProvinceTypesFormValues>({
     resolver: zodResolver(provinceTypesFormSchema),
     defaultValues,
   });
 
   const watchedProvinces = useWatch({ control, name: "provinces" });
+
+  const hasSCLayer = useMemo(() => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgContent, "image/svg+xml");
+    return !!doc.getElementById("supply-centers");
+  }, [svgContent]);
+
+  const handleAutoDetectSCs = () => {
+    const detected = detectSCProvinces(svgContent);
+    defaultValues.provinces.forEach((province, i) => {
+      setValue(`provinces.${i}.supplyCenter`, detected.has(province.id));
+    });
+  };
 
   const typeColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -1816,8 +1912,18 @@ function ProvinceTypesForm({ formId, svgContent, defaultValues, onSubmit }: Prov
       )}
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-1">
-          <div className="pr-2 text-right text-xs text-muted-foreground">
-            {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
+          <div className="flex items-center justify-between pr-2 pb-1">
+            {hasSCLayer ? (
+              <Button type="button" variant="outline" size="sm" onClick={handleAutoDetectSCs}>
+                <Wand2 className="h-3 w-3" />
+                Auto-detect SCs
+              </Button>
+            ) : (
+              <span />
+            )}
+            <span className="text-xs text-muted-foreground">
+              {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
+            </span>
           </div>
           <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
             {defaultValues.provinces.map((province, i) => (
@@ -1877,6 +1983,11 @@ function ProvinceTypesForm({ formId, svgContent, defaultValues, onSubmit }: Prov
                     )}
                   />
                 </div>
+                {namedCoastParentIds.has(province.id) && (
+                  <p className="px-2 pb-0.5 text-xs text-muted-foreground underline">
+                    This is a named-coast province, so the main province is land.
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -1899,7 +2010,7 @@ interface HomeNationsFormHandle {
 
 interface HomeNationsFormProps {
   svgContent: string;
-  scProvinces: Array<{ id: string; name: string; namedCoasts: Array<{ id: string; name: string }> }>;
+  scProvinces: Array<{ id: string; name: string; type: string; namedCoasts: Array<{ id: string; name: string }> }>;
   nations: Array<{ id: string; name: string; color: string }>;
   defaultValues: HomeNationsData;
   onSubmit: (data: HomeNationsData) => void;
@@ -1975,12 +2086,6 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
         : "16 / 9";
     }, [svgContent]);
 
-    const options = useMemo(() => [
-      { value: "", label: "Empty" },
-      { value: "neutral", label: "Neutral", color: undefined },
-      ...nations.map(n => ({ value: n.id, label: n.name, color: n.color })),
-    ], [nations]);
-
     if (sortedProvinces.length === 0) {
       return (
         <p className="text-sm text-muted-foreground">
@@ -1997,126 +2102,151 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
             Some fleets require a coast selection. Please select a coast for each fleet marked below.
           </div>
         )}
+        <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+          Currently, we do not support Neutral units. You can assign them, but the game will not render them.
+        </p>
+
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
-          {sortedProvinces.map(province => {
-            const entry = assignment[province.id] ?? { nation: "", startingUnit: null };
-            return (
-              <div
-                key={province.id}
-                onMouseEnter={() => setHighlightedId(province.id)}
-                onMouseLeave={() => setHighlightedId(null)}
-                className={cn(
-                  "rounded-md px-2 py-1.5 transition-colors",
-                  highlightedId === province.id
-                    ? "bg-yellow-50 dark:bg-yellow-950/30"
-                    : "hover:bg-muted/40"
-                )}
-              >
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
-                    {province.id}
-                  </span>
-                  <span className="text-sm font-medium">{province.name}</span>
-                </div>
-                <div className="ml-[4.5rem] flex flex-wrap gap-1">
-                  {options.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() =>
-                        setAssignment(prev => ({
-                          ...prev,
-                          [province.id]: { ...prev[province.id], nation: opt.value },
-                        }))
-                      }
-                      className={cn(
-                        "flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors",
-                        entry.nation === opt.value
-                          ? "bg-primary text-primary-foreground"
-                          : "border text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      {opt.color && (
-                        <span
-                          className="inline-block h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: opt.color }}
-                        />
-                      )}
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="ml-[4.5rem] mt-1 flex flex-wrap items-center gap-1">
-                  {(["none", "army", "fleet"] as const).map(unit => (
-                    <button
-                      key={unit}
-                      type="button"
-                      onClick={() =>
+          <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
+            {sortedProvinces.map(province => {
+              const entry = assignment[province.id] ?? { nation: "", startingUnit: null, startingCoast: null };
+              const isEmpty = !entry.nation;
+              const isLand = province.type === "land";
+
+              return (
+                <div
+                  key={province.id}
+                  onMouseEnter={() => setHighlightedId(province.id)}
+                  onMouseLeave={() => setHighlightedId(null)}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 transition-colors",
+                    highlightedId === province.id
+                      ? "bg-yellow-50 dark:bg-yellow-950/30"
+                      : "hover:bg-muted/40"
+                  )}
+                >
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                      {province.id}
+                    </span>
+                    <span className="text-sm font-medium">{province.name}</span>
+                  </div>
+
+                  <div className="ml-[4.5rem] flex items-center gap-2">
+                    {/* Owner dropdown */}
+                    <Select
+                      value={entry.nation || "__empty__"}
+                      onValueChange={val => {
+                        const nation = val === "__empty__" ? "" : val;
                         setAssignment(prev => ({
                           ...prev,
                           [province.id]: {
                             ...prev[province.id],
-                            startingUnit: unit === "none" ? null : unit,
+                            nation,
+                            startingUnit: nation === "" ? null : prev[province.id]?.startingUnit ?? null,
                             startingCoast: null,
                           },
-                        }))
-                      }
-                      className={cn(
-                        "rounded px-1.5 py-0.5 text-xs capitalize transition-colors",
-                        entry.startingUnit === (unit === "none" ? null : unit)
-                          ? "bg-primary text-primary-foreground"
-                          : "border text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
+                        }));
+                      }}
                     >
-                      {unit}
-                    </button>
-                  ))}
-                  {entry.startingUnit === "fleet" && province.namedCoasts.length > 0 && (
-                    <Select
-                      value={entry.startingCoast ?? ""}
-                      onValueChange={val =>
-                        setAssignment(prev => ({
-                          ...prev,
-                          [province.id]: { ...prev[province.id], startingCoast: val || null },
-                        }))
-                      }
-                    >
-                      <SelectTrigger size="sm" className={cn("h-6 w-auto text-xs", coastErrors.has(province.id) && "border-destructive")}>
-                        <SelectValue placeholder="Coast…" />
+                      <SelectTrigger className="h-7 flex-1 text-xs">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {province.namedCoasts.map(coast => (
-                          <SelectItem key={coast.id} value={coast.id}>
-                            {coast.name}
+                        <SelectItem value="__empty__">Empty</SelectItem>
+                        <SelectSeparator />
+                        {nations.map(n => (
+                          <SelectItem key={n.id} value={n.id}>
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: n.color }}
+                              />
+                              {n.name}
+                            </span>
                           </SelectItem>
                         ))}
+                        <SelectSeparator />
+                        <SelectItem value="neutral">Neutral</SelectItem>
                       </SelectContent>
                     </Select>
+
+                    {/* A / F toggle */}
+                    <div className="flex shrink-0 items-center gap-0.5 rounded-md border px-1.5 py-1">
+                      {(["army", "fleet"] as const).map(unit => {
+                        const disableFleet = unit === "fleet" && isLand;
+                        const disabled = isEmpty || disableFleet;
+                        const active = entry.startingUnit === unit;
+                        return (
+                          <button
+                            key={unit}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() =>
+                              setAssignment(prev => ({
+                                ...prev,
+                                [province.id]: {
+                                  ...prev[province.id],
+                                  startingUnit: active ? null : unit,
+                                  startingCoast: null,
+                                },
+                              }))
+                            }
+                            className={cn(
+                              "rounded px-1.5 py-0.5 text-xs font-medium transition-colors",
+                              active
+                                ? "bg-primary text-primary-foreground"
+                                : disabled
+                                ? "cursor-not-allowed text-muted-foreground/30"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {unit === "army" ? "A" : "F"}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Coast selector */}
+                    {entry.startingUnit === "fleet" && province.namedCoasts.length > 0 && (
+                      <Select
+                        value={entry.startingCoast ?? ""}
+                        onValueChange={val =>
+                          setAssignment(prev => ({
+                            ...prev,
+                            [province.id]: { ...prev[province.id], startingCoast: val || null },
+                          }))
+                        }
+                      >
+                        <SelectTrigger size="sm" className={cn("h-7 w-auto text-xs", coastErrors.has(province.id) && "border-destructive")}>
+                          <SelectValue placeholder="Coast…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {province.namedCoasts.map(coast => (
+                            <SelectItem key={coast.id} value={coast.id}>
+                              {coast.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  {coastErrors.has(province.id) && (
+                    <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">Select a coast for this fleet.</p>
                   )}
                 </div>
-                {coastErrors.has(province.id) && (
-                  <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">Select a coast for this fleet.</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="sticky top-8 self-start">
-          <div
-            className="w-full overflow-hidden rounded-lg border"
-            style={{ aspectRatio }}
-          >
-            {previewUrl && (
-              <img
-                src={previewUrl}
-                alt="Map preview"
-                className="h-full w-full object-contain"
-              />
-            )}
+              );
+            })}
           </div>
-        </div>
+
+          <div className="sticky top-8 self-start">
+            <div className="w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+              {previewUrl && (
+                <img src={previewUrl} alt="Map preview" className="h-full w-full object-contain" />
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -2361,6 +2491,18 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
               <> · {Math.round(passBreakdown.fleet)} fleet · {Math.round(passBreakdown.army)} army · {Math.round(passBreakdown.both)} both</>
             )}
           </span>
+        </div>
+
+        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground space-y-2">
+          <p>
+            Adjacencies define which provinces border each other. <span className="font-medium text-foreground">Auto-detect is recommended</span>, but the result must be reviewed carefully — every adjacent province pair needs a connection.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Coast-to-coast connections</span> are auto-set to <span className="font-mono text-foreground">both</span> (army + fleet). Change these to <span className="font-mono text-foreground">army</span> if the two provinces only share a land border with no navigable water between them — fleets should not be able to cross.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Named-coast provinces:</span> add an <span className="font-mono text-foreground">army</span> connection between the main province and any bordering coast or land province. Add a <span className="font-mono text-foreground">fleet</span> connection between the named-coast subprovince (e.g. <span className="font-mono">stp/nc</span>) and the bordering sea or coastal provinces that fleets may enter from that coast.
+          </p>
         </div>
 
         <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
@@ -2871,6 +3013,19 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
 
     return (
       <>
+        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground space-y-2">
+          <p className="font-medium text-foreground">Dominance Rules (non-SC provinces)</p>
+          <p>
+            By default, the map colours non-SC provinces if all adjacent SCs are owned by the same power. For starting positions this can look wrong — for example, Gascony would not be coloured French if Spain is empty.
+          </p>
+          <p>
+            Dominance rules let you override this per province. For example: colour Gascony as French <em>if</em> Spain is empty <em>and</em> Marseilles is French. The rule only applies when its conditions match exactly; otherwise the default logic is used. This way the visual boundaries of starting countries can be controlled precisely.
+          </p>
+          <p>
+            This is <span className="font-medium text-foreground">cosmetic only</span> and has no effect on gameplay. It can be skipped entirely.
+          </p>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
           <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
             {nonScProvinces.length === 0 ? (
@@ -3178,9 +3333,6 @@ const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, PhaseProgres
           Add Phase
         </Button>
 
-        <p className="text-xs text-muted-foreground">
-          Phases run top to bottom and loop back. The last phase's "year +" increments the year on wrap-around.
-        </p>
       </div>
     );
   }
@@ -3676,3 +3828,14 @@ function ExportStep(props: ExportStepProps) {
     </div>
   );
 }
+
+// ─── UploadDiplicityStep ──────────────────────────────────────────────────────
+
+function UploadDiplicityStep() {
+  return (
+    <p className="text-sm text-muted-foreground">
+      Upload functionality coming soon.
+    </p>
+  );
+}
+

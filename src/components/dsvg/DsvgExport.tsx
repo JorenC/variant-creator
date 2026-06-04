@@ -34,6 +34,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
         assignments.unitPositions,
         assignments.provinceNames,
         assignments.borders,
+        assignments.supplyCenters,
       ].filter((k): k is string => k !== null)
     );
     const provincesIdx = assignments.provinces
@@ -154,6 +155,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
       { label: "unit-positions", key: assignments.unitPositions },
       { label: "province-names", key: assignments.provinceNames },
       { label: "borders", key: assignments.borders },
+      { label: "supply-centers", key: assignments.supplyCenters },
     ] as { label: string; key: string | null }[]
   ).filter((l): l is { label: string; key: string } => l.key !== null);
 
