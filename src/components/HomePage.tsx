@@ -154,6 +154,37 @@ export function HomePage() {
         {/* ── Guide sections ───────────────────────────────────────────────────── */}
         <div className="mx-auto max-w-3xl space-y-20 px-6 py-20">
 
+          {/* ── Intro blurb ───────────────────────────────────────────────────── */}
+          <div className="space-y-4 text-base leading-relaxed text-muted-foreground">
+            <p>
+              You can make your own variant here. This creator helps you go through
+              the steps — if you have any issue, hop on to{" "}
+              <a
+                href="https://discord.gg/Z74vHN9H"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
+              >
+                Discord
+              </a>{" "}
+              and ask for help.
+            </p>
+            <p>
+              The Diplicity engine takes two files: the{" "}
+              <span className="font-medium text-foreground">dSVG</span> — an SVG file
+              that follows certain conventions like names of layers and objects — and
+              a{" "}
+              <span className="font-medium text-foreground">dVAR</span> — the
+              metadata: description of nations, adjacencies, supply centers, etc.
+              This site helps you go from a drawing or PNG to a final uploadable
+              version.
+            </p>
+            <p>
+              Each step can be done manually if you want creative freedom, but
+              it's easier and more foolproof to do it with this creator.
+            </p>
+          </div>
+
           <GuideSection id="instructions" number="1" icon={<BookOpen className="h-4 w-4" />} title="Instructions">
             <p className="text-muted-foreground leading-relaxed">
               An overview of the full workflow for creating a Diplomacy variant — from
