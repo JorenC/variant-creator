@@ -91,9 +91,15 @@ const LAYERS: LayerInfo[] = [
     details: (
       <>
         <p>
-          Add a small circle (around 10×10 px) inside each province at the spot where you want
-          units to appear. The unit will be drawn centred on that circle, so place it somewhere
-          unobstructed — usually towards the middle of the province.
+          The AI has already placed a unit-position marker at the centre of each province, so
+          you don't need to create them from scratch. Go through the layer and nudge any markers
+          that landed in an awkward spot — for example, if the calculated centre falls in the sea
+          for a coastal province, drag it a little inland.
+        </p>
+        <p className="mt-2">
+          If you added any named coasts, you'll need to add those markers yourself: place a small
+          circle (around 10×10 px) inside each coast shape at the position where you want the
+          unit to appear.
         </p>
         <p className="mt-2">
           <strong>Naming convention:</strong> use the same three-letter abbreviation as the
