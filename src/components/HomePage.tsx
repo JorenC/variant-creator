@@ -214,7 +214,13 @@ export function HomePage() {
             </p>
           </GuideSection>
 
-          <GuideSection id="dsvg-creation" number="3" icon={<FileCode2 className="h-4 w-4" />} title="dSVG Creation">
+          <GuideSection id="style-map" number="3" icon={<Layers className="h-4 w-4" />} title="Style and complete the map">
+            <p className="text-muted-foreground leading-relaxed">
+              Content coming soon.
+            </p>
+          </GuideSection>
+
+          <GuideSection id="dsvg-creation" number="4" icon={<FileCode2 className="h-4 w-4" />} title="dSVG Creation">
             <p className="text-muted-foreground leading-relaxed">
               Use the dSVG Creator to assign SVG layers to canonical roles (provinces,
               named coasts, unit positions, province names, borders), configure province
@@ -230,7 +236,7 @@ export function HomePage() {
             </Button>
           </GuideSection>
 
-          <GuideSection id="dvar-creation" number="4" icon={<FileJson className="h-4 w-4" />} title="dVAR Creation">
+          <GuideSection id="dvar-creation" number="5" icon={<FileJson className="h-4 w-4" />} title="dVAR Creation">
             <p className="text-muted-foreground leading-relaxed">
               Use the dVAR Creator to define nations, provinces, adjacencies, home
               centers, phase progression, victory conditions, and game-rule modifiers.
@@ -246,7 +252,7 @@ export function HomePage() {
             </Button>
           </GuideSection>
 
-          <GuideSection id="uploading" number="5" icon={<Upload className="h-4 w-4" />} title="Uploading to Diplicity">
+          <GuideSection id="uploading" number="6" icon={<Upload className="h-4 w-4" />} title="Uploading to Diplicity">
             <div className="mb-5 flex items-center gap-3">
               <img
                 src="/diplicity-icon.png"
