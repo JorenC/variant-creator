@@ -23,6 +23,10 @@ dist-ssr
 # Environment
 .env
 
+# dSVG/dVAR export artifacts (output files, not source)
+*.d.svg
+*.dvar
+
 # Claude Code
 .claude/settings.local.json
 .claude/worktrees
