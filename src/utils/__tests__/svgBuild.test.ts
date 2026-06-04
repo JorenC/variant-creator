@@ -11,6 +11,7 @@ const BASE_ASSIGNMENTS: LayerAssignments = {
   unitPositions: null,
   provinceNames: null,
   borders: null,
+  supplyCenters: null,
 };
 
 function makeSvg(rootFillAttr: string, extraFgPath: string = ""): string {
@@ -75,6 +76,7 @@ describe("buildDsvgOutput – Inkscape sodipodi:namedview index shift", () => {
       unitPositions: null,
       provinceNames: null,
       borders: null,
+      supplyCenters: null,
     };
     const output = buildDsvgOutput(makeInkscapeSvg(), assignments);
     const doc = new DOMParser().parseFromString(output, "image/svg+xml");
@@ -93,6 +95,7 @@ describe("buildDsvgOutput – Inkscape sodipodi:namedview index shift", () => {
       unitPositions: null,
       provinceNames: null,
       borders: null,
+      supplyCenters: null,
     };
     const output = buildDsvgOutput(makeInkscapeSvg(), assignments);
     const doc = new DOMParser().parseFromString(output, "image/svg+xml");
