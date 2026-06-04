@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source not "**/*.d.svg";
+@source not "**/*.dvar";
 
 @custom-variant dark (&:is(.dark *));
 
