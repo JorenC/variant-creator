@@ -181,6 +181,29 @@ const LAYERS: LayerInfo[] = [
     ),
   },
   {
+    name: "scs",
+    label: "Supply centres",
+    accent: "border-l-yellow-400",
+    description:
+      "The visual symbols that mark supply centre provinces on the map. Technically optional as a separate layer — but worth having.",
+    details: (
+      <>
+        <p>
+          The ingestor will automatically move supply centre symbols into the foreground when
+          it processes your map, so this layer isn't strictly required. That said, keeping them
+          separate makes your file much easier to work with — you can hide or adjust all SC
+          symbols at once without touching anything else.
+        </p>
+        <p className="mt-2">
+          Draw your SC marker for each supply centre province here. There are no technical
+          constraints on what these look like — a classic star, a cross, a shield, an ornate
+          seal — go as creative as you like. This is one of the best places to add personality
+          to your map.
+        </p>
+      </>
+    ),
+  },
+  {
     name: "foreground",
     label: "Foreground",
     accent: "border-l-rose-400",
@@ -277,7 +300,7 @@ export function StyleMapPage() {
 
         {/* ── Layer cards ─────────────────────────────────────────────────────── */}
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold tracking-tight">The seven layers</h2>
+          <h2 className="text-2xl font-bold tracking-tight">The eight layers</h2>
           <div className="space-y-4">
             {LAYERS.map(layer => (
               <LayerCard key={layer.name} layer={layer} />
