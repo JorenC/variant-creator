@@ -165,7 +165,7 @@ export function HomePage() {
               You can make your own variant here. This creator helps you go through
               the steps — if you have any issue, hop on to{" "}
               <a
-                href="https://discord.gg/Z74vHN9H"
+                href="https://discord.gg/TPxS67fw9T"
                 target="_blank"
                 rel="noreferrer"
                 className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"

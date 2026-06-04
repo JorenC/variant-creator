@@ -71,7 +71,7 @@ export function UploadDiplicityPage() {
               can apply to have it published. Reach out to the Diplicity team
               on{" "}
               <a
-                href="https://discord.gg/Z74vHN9H"
+                href="https://discord.gg/TPxS67fw9T"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline underline-offset-4"

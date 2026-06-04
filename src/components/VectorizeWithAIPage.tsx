@@ -180,7 +180,7 @@ export function VectorizeWithAIPage() {
             No problem — one of the Diplicity developers can run the vectorizer for you. Just
             share your cleaned PNG map on the{" "}
             <a
-              href="https://discord.gg/Z74vHN9H"
+              href="https://discord.gg/TPxS67fw9T"
               target="_blank"
               rel="noreferrer"
               className="font-medium text-foreground underline underline-offset-4 hover:opacity-70"
