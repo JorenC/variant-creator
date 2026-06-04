@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppHeader } from "@/components/common/AppHeader";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowRight, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Layer card data ──────────────────────────────────────────────────────────
@@ -289,6 +291,7 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
 
 export function StyleMapPage() {
   const navigate = useNavigate();
+  const [showExample, setShowExample] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -392,6 +395,18 @@ export function StyleMapPage() {
           </div>
         </section>
 
+        {/* ── Canaan example link ─────────────────────────────────────────────── */}
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => setShowExample(true)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-4 hover:opacity-70"
+          >
+            See the Land of Canaan as a worked example
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
         {/* ── Next step ───────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between rounded-xl border bg-muted/30 px-6 py-5">
           <div>
@@ -405,6 +420,102 @@ export function StyleMapPage() {
         </div>
 
       </main>
+
+      {/* ── Canaan example dialog ─────────────────────────────────────────────── */}
+      <Dialog open={showExample} onOpenChange={setShowExample}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Land of Canaan — worked example</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            Download the finished Figma SVG for the Land of Canaan to see a complete, export-ready
+            map. Compare it against your own work to make sure everything looks right.
+          </p>
+
+          <a href="/guide/canaan-example.svg" download="canaan-example.svg">
+            <Button variant="outline" className="w-full">
+              <Download className="h-4 w-4" />
+              Download canaan-example.svg
+            </Button>
+          </a>
+
+          <div className="mt-2 space-y-8 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
+
+            {/* 1. Border cleanup */}
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-foreground">1. Cleaned up the borders</h3>
+              <p>
+                The AI traced the borders directly from the PNG, which left them a bit thin and
+                rough. By selecting all objects in the borders layer and increasing the stroke
+                weight, then manually adjusting a few paths that didn't align correctly, the
+                borders become much cleaner and more readable.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <img
+                    src="/guide/canaan-borders-before.png"
+                    alt="Borders before cleanup — thin, inconsistent lines"
+                    className="w-full rounded-lg border"
+                  />
+                  <p className="mt-1 text-center text-xs text-muted-foreground">Before</p>
+                </div>
+                <div>
+                  <img
+                    src="/guide/canaan-borders-after.png"
+                    alt="Borders after cleanup — thick, consistent black lines"
+                    className="w-full rounded-lg border"
+                  />
+                  <p className="mt-1 text-center text-xs text-muted-foreground">After</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Oasis provinces */}
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-foreground">2. Redrawn oasis provinces with a gradient</h3>
+              <p>
+                The original map had three small circular oasis provinces in the desert that didn't
+                translate well from the PNG. Rather than keeping them, new provinces were drawn to
+                fill the full desert area — and to give the desert a sense of depth, a gradient
+                fill was applied across the three provinces (light sand shading into deep orange
+                and red), making the region feel visually distinct from the rest of the map.
+              </p>
+              <img
+                src="/guide/canaan-oasis.png"
+                alt="Redrawn oasis provinces with gradient fills"
+                className="w-full rounded-lg border"
+              />
+            </div>
+
+            {/* 3. Outlined text */}
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-foreground">3. Proto-Hebrew labels with outlined text</h3>
+              <p>
+                Proto-Hebrew script was added as ornamental province labels in the foreground layer.
+                Because this font is highly unusual and not available on Google Fonts, it can't
+                be reliably loaded for all players. The solution: right-click each text layer in
+                Figma and select <strong>"Outline stroke"</strong>. This converts the text into
+                vector shapes, so the font file is no longer needed — the glyphs are drawn
+                directly.
+              </p>
+              <img
+                src="/guide/figma-outline-text.png"
+                alt="Figma context menu with Outline stroke highlighted"
+                className="mx-auto w-56 rounded-lg border"
+              />
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                <strong>Important:</strong> once text is outlined it can no longer be edited as
+                text. Save a copy of your file before doing this. And if your font{" "}
+                <em>is</em> on Google Fonts, skip this step entirely — we'll link the font during
+                export instead, which keeps the file smaller and faster to load.
+              </div>
+            </div>
+
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
