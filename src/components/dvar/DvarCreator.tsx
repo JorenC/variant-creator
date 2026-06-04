@@ -10,6 +10,7 @@ import {
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { AppHeader } from "@/components/common/AppHeader";
 import {
   Upload,
   AlertCircle,
@@ -540,6 +541,20 @@ function ReconcileStep({
 
 // ─── Root component ────────────────────────────────────────────────────────────
 
+const DVAR_STEPS = [
+  { key: "upload",                  label: "Upload"        },
+  { key: "basic-info",              label: "Basic info"    },
+  { key: "nations",                 label: "Nations"       },
+  { key: "provinces",               label: "Provinces"     },
+  { key: "home-nations",            label: "Home nations"  },
+  { key: "adjacencies",             label: "Adjacencies"   },
+  { key: "dominance-rules",         label: "Dominance"     },
+  { key: "phase-progression",       label: "Phases"        },
+  { key: "victory-conditions",      label: "Victory"       },
+  { key: "adjudication-modifiers",  label: "Rules"         },
+  { key: "export",                  label: "Export"        },
+];
+
 const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: string; subtitle: string }> = {
   "basic-info": {
     title: "Basic Info",
@@ -953,12 +968,19 @@ export function DvarCreator() {
     null;
 
   return (
+    <>
+    <AppHeader
+      steps={DVAR_STEPS}
+      currentStep={step === "reconcile" ? "upload" : step}
+      filename={fileName}
+      onClear={handleClear}
+    />
     <div className="flex min-h-screen flex-col items-center p-8">
       <div className="flex w-full max-w-5xl flex-col gap-6">
         {step === "upload" ? (
           <>
             <div>
-              <h1 className="text-3xl font-bold">dVAR Creator</h1>
+              <h1 className="text-3xl font-bold">Upload your dSVG</h1>
               <p className="mt-1 text-muted-foreground">
                 Upload a dSVG file to begin building your variant definition.
               </p>
@@ -1048,20 +1070,11 @@ export function DvarCreator() {
           </>
         ) : step === "reconcile" ? (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold">Reconcile IDs</h1>
-                <p className="mt-1 text-muted-foreground">
-                  Map dVAR IDs that are missing from the uploaded dSVG to their new equivalents.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3 pt-1">
-                <span className="text-sm text-muted-foreground">{fileName}</span>
-                <Button variant="ghost" size="sm" onClick={handleClear}>
-                  <X className="h-4 w-4" />
-                  Clear
-                </Button>
-              </div>
+            <div>
+              <h1 className="text-3xl font-bold">Reconcile IDs</h1>
+              <p className="mt-1 text-muted-foreground">
+                Map dVAR IDs that are missing from the uploaded dSVG to their new equivalents.
+              </p>
             </div>
 
             {reconcileMismatches && (
@@ -1087,22 +1100,13 @@ export function DvarCreator() {
           </>
         ) : (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold">
-                  {STEP_META[step as Exclude<Step, "upload" | "reconcile">].title}
-                </h1>
-                <p className="mt-1 text-muted-foreground">
-                  {STEP_META[step as Exclude<Step, "upload" | "reconcile">].subtitle}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3 pt-1">
-                <span className="text-sm text-muted-foreground">{fileName}</span>
-                <Button variant="ghost" size="sm" onClick={handleClear}>
-                  <X className="h-4 w-4" />
-                  Clear
-                </Button>
-              </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                {STEP_META[step as Exclude<Step, "upload" | "reconcile">].title}
+              </h1>
+              <p className="mt-1 text-muted-foreground">
+                {STEP_META[step as Exclude<Step, "upload" | "reconcile">].subtitle}
+              </p>
             </div>
 
             {step === "basic-info" && parsedDsvg && (
@@ -1320,6 +1324,7 @@ export function DvarCreator() {
         />
       </div>
     </div>
+    </>
   );
 }
 

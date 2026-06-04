@@ -1,14 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, BookOpen, Layers, FileCode2, FileJson, Upload } from "lucide-react";
-
-const NAV_SECTIONS = [
-  { label: "Instructions", href: "#instructions" },
-  { label: "Map Extraction", href: "#map-extraction" },
-  { label: "dSVG Creation", href: "#dsvg-creation" },
-  { label: "dVAR Creation", href: "#dvar-creation" },
-  { label: "Uploading", href: "#uploading" },
-] as const;
+import { AppHeader } from "@/components/common/AppHeader";
 
 interface MapTile {
   src: string;
@@ -63,35 +56,18 @@ export function HomePage() {
     <div className="min-h-screen bg-background">
 
       {/* ── Sticky header ───────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex max-w-7xl items-center gap-6 px-6 py-3">
-          <div className="flex items-center gap-2.5 shrink-0">
-            <img src="/diplicity-icon.png" alt="Diplicity" className="h-7 w-7 rounded" />
-            <span className="font-semibold tracking-tight">Variant Creator</span>
-          </div>
-
-          <nav className="hidden lg:flex items-center gap-6 ml-4">
-            {NAV_SECTIONS.map(s => (
-              <a
-                key={s.href}
-                href={s.href}
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground whitespace-nowrap"
-              >
-                {s.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-2">
+      <AppHeader
+        actions={
+          <>
             <Button size="sm" variant="ghost" onClick={() => navigate("/dsvg-creator")}>
               dSVG Creator
             </Button>
             <Button size="sm" onClick={() => navigate("/dvar-creator")}>
               dVAR Creator
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <main>
         {/* ── Hero ────────────────────────────────────────────────────────────── */}

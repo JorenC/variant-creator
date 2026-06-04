@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { Upload, AlertCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Upload, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AppHeader } from "@/components/common/AppHeader";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LayerAssignment } from "@/components/dsvg/LayerAssignment";
@@ -39,6 +40,15 @@ const STEP_SUBTITLES: Record<Exclude<Step, "upload">, string> = {
   "unit-positions": "Assign a three-letter code to each unit position marker.",
   done: "Toggle layer visibility and download your dSVG file.",
 };
+
+const DSVG_STEPS = [
+  { key: "upload",         label: "Upload"          },
+  { key: "assign",         label: "Assign layers"   },
+  { key: "preview",        label: "Abbreviations"   },
+  { key: "named-coasts",   label: "Named coasts"    },
+  { key: "unit-positions", label: "Unit positions"  },
+  { key: "done",           label: "Export"          },
+];
 
 const PREV_STEP: Record<Exclude<Step, "upload">, Step> = {
   assign: "upload",
@@ -142,13 +152,20 @@ export function DSvgCreator() {
   };
 
   return (
+    <>
+    <AppHeader
+      steps={DSVG_STEPS}
+      currentStep={step}
+      filename={fileName}
+      onClear={handleClear}
+    />
     <div className="flex min-h-screen flex-col items-center p-8">
       <div className="flex w-full max-w-5xl flex-col gap-6">
         {step === "upload" ? (
           <>
             <div>
-              <h1 className="text-3xl font-bold">dSVG Creator</h1>
-              <p className="mt-1 text-muted-foreground">Upload an SVG to begin.</p>
+              <h1 className="text-3xl font-bold">Upload your map</h1>
+              <p className="mt-1 text-muted-foreground">Drop any SVG file here to begin.</p>
             </div>
 
             <div
@@ -190,22 +207,13 @@ export function DSvgCreator() {
           </>
         ) : (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold">
-                  {STEP_TITLES[step as Exclude<Step, "upload">]}
-                </h1>
-                <p className="mt-1 text-muted-foreground">
-                  {STEP_SUBTITLES[step as Exclude<Step, "upload">]}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3 pt-1">
-                <span className="text-sm text-muted-foreground">{fileName}</span>
-                <Button variant="ghost" size="sm" onClick={handleClear}>
-                  <X className="h-4 w-4" />
-                  Clear
-                </Button>
-              </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                {STEP_TITLES[step as Exclude<Step, "upload">]}
+              </h1>
+              <p className="mt-1 text-muted-foreground">
+                {STEP_SUBTITLES[step as Exclude<Step, "upload">]}
+              </p>
             </div>
 
             {step === "assign" && tree && (
@@ -283,5 +291,6 @@ export function DSvgCreator() {
         />
       </div>
     </div>
+    </>
   );
 }
