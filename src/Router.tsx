@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from "react-router-dom";
 import { HomePage } from "@/components/HomePage";
 import { PreparingMapPage } from "@/components/PreparingMapPage";
 import { VectorizeWithAIPage } from "@/components/VectorizeWithAIPage";
@@ -24,6 +24,15 @@ const WIZARD_PHASES = [
   { path: "5", title: "Review & Export", component: PhaseExport },
 ];
 
+function RootLayout() {
+  return (
+    <>
+      <ScrollRestoration />
+      <Outlet />
+    </>
+  );
+}
+
 function WizardOutlet() {
   return (
     <WizardLayout>
@@ -34,49 +43,54 @@ function WizardOutlet() {
 
 export const router = createBrowserRouter([
   {
-    path: "/",
-    element: <HomePage />,
-  },
-  {
-    path: "/preparing-your-map",
-    element: <PreparingMapPage />,
-  },
-  {
-    path: "/vectorize-with-ai",
-    element: <VectorizeWithAIPage />,
-  },
-  {
-    path: "/style-map",
-    element: <StyleMapPage />,
-  },
-  {
-    path: "/variant-creator",
-    element: <LandingPage />,
-  },
-  {
-    path: "/dsvg-creator",
-    element: <DSvgCreator />,
-  },
-  {
-    path: "/dvar-creator",
-    element: <DvarCreator />,
-  },
-  {
-    path: "/upload-diplicity",
-    element: <UploadDiplicityPage />,
-  },
-  {
-    path: "/phase",
-    element: <WizardOutlet />,
+    element: <RootLayout />,
     children: [
       {
-        index: true,
-        element: <Navigate to="0" replace />,
+        path: "/",
+        element: <HomePage />,
       },
-      ...WIZARD_PHASES.map(({ path, component: Component }) => ({
-        path,
-        element: <Component />,
-      })),
+      {
+        path: "/preparing-your-map",
+        element: <PreparingMapPage />,
+      },
+      {
+        path: "/vectorize-with-ai",
+        element: <VectorizeWithAIPage />,
+      },
+      {
+        path: "/style-map",
+        element: <StyleMapPage />,
+      },
+      {
+        path: "/variant-creator",
+        element: <LandingPage />,
+      },
+      {
+        path: "/dsvg-creator",
+        element: <DSvgCreator />,
+      },
+      {
+        path: "/dvar-creator",
+        element: <DvarCreator />,
+      },
+      {
+        path: "/upload-diplicity",
+        element: <UploadDiplicityPage />,
+      },
+      {
+        path: "/phase",
+        element: <WizardOutlet />,
+        children: [
+          {
+            index: true,
+            element: <Navigate to="0" replace />,
+          },
+          ...WIZARD_PHASES.map(({ path, component: Component }) => ({
+            path,
+            element: <Component />,
+          })),
+        ],
+      },
     ],
   },
 ]);
