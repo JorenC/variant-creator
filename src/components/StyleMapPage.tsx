@@ -79,6 +79,12 @@ const LAYERS: LayerInfo[] = [
         <p className="mt-2 text-sm text-muted-foreground">
           Our Land of Canaan example has no named coasts, so you can skip this layer for now.
         </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          You'll notice a small empty object labelled{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">DELETE THIS</code> in this layer —
+          the AI added it so the layer exists in the file even when empty. Just delete it in Figma
+          before moving on.
+        </p>
       </>
     ),
   },
@@ -136,6 +142,12 @@ const LAYERS: LayerInfo[] = [
           These are the names players will see in the game, so use the spellings you want to
           appear on screen.
         </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          You'll notice a small empty object labelled{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">DELETE THIS</code> in this layer —
+          the AI added it so the layer exists in the file even when empty. Delete it in Figma once
+          you've added your name labels.
+        </p>
         <p className="mt-2">
           If you want to add <strong>ornamental names</strong> — for example in a different
           script, a stylised calligraphy font, or with decorative flourishes — it's usually
@@ -179,6 +191,12 @@ const LAYERS: LayerInfo[] = [
         <p>
           Use this for decorative details that should sit above the province colours and borders:
           ornamental map edges, illustrations, a title cartouche, anything visual you want on top.
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          You'll notice a small empty object labelled{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">DELETE THIS</code> in this layer —
+          the AI added it so the layer exists in the file even when empty. Delete it in Figma when
+          you start adding your foreground content.
         </p>
         <p className="mt-2">
           There's one practical use beyond decoration:{" "}
