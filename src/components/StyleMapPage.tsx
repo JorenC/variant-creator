@@ -354,6 +354,44 @@ export function StyleMapPage() {
           </p>
         </section>
 
+        {/* ── Export ──────────────────────────────────────────────────────────── */}
+        <section className="rounded-xl border p-6 shadow-sm">
+          <h2 className="mb-4 text-2xl font-bold tracking-tight">Exporting your map</h2>
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+            <img
+              src="/guide/export.png"
+              alt="Figma export settings panel showing 'Include id attribute' checked and SVG format selected"
+              className="w-full rounded-lg border sm:w-56 sm:shrink-0"
+            />
+            <div className="space-y-3 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
+              <p>
+                When you're happy with your map, it's time to export it as an SVG file, ready for
+                the dSVG Creator.
+              </p>
+              <p>Before you export, run through these checks:</p>
+              <ul className="list-inside list-disc space-y-1.5">
+                <li>
+                  Every object has either a <strong>fill</strong> or a <strong>stroke</strong> — objects
+                  with neither will disappear from the exported file.
+                </li>
+                <li>
+                  No layers or objects are <strong>hidden</strong> (eye icon off) — hidden elements
+                  are not exported and will be missing from the final map.
+                </li>
+                <li>
+                  In the export settings, make sure <strong>"Include id attribute"</strong> is
+                  checked. This is what lets the dSVG Creator read your province names — without it,
+                  all the renaming you did will be lost.
+                </li>
+              </ul>
+              <p>
+                Then select <strong>SVG</strong> as the format and export. That file is what you'll
+                load into the dSVG Creator in the next step.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* ── Next step ───────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between rounded-xl border bg-muted/30 px-6 py-5">
           <div>
