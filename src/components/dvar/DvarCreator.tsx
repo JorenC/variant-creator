@@ -1772,7 +1772,7 @@ function detectSCProvinces(svgContent: string): Set<string> {
     const liveSvg = container.querySelector("svg") as SVGSVGElement | null;
     if (!liveSvg) return result;
 
-    const liveSCs = liveSvg.getElementById("supply-centers");
+    const liveSCs = liveSvg.getElementById("foreground")?.querySelector("#supply-centers") ?? null;
     const liveProvinces = liveSvg.getElementById("provinces");
     if (!liveSCs || !liveProvinces) return result;
 
@@ -1844,7 +1844,7 @@ function ProvinceTypesForm({ formId, svgContent, namedCoastParentIds, defaultVal
   const hasSCLayer = useMemo(() => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgContent, "image/svg+xml");
-    return !!doc.getElementById("supply-centers");
+    return !!doc.getElementById("foreground")?.querySelector("#supply-centers");
   }, [svgContent]);
 
   const handleAutoDetectSCs = () => {
