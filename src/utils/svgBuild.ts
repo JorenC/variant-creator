@@ -273,7 +273,8 @@ function relabelByInkscape(layer: Element): void {
 export function buildDsvgOutput(
   svgContent: string,
   assignments: LayerAssignments,
-  unitPositionCodes: Record<string, string> = {}
+  unitPositionCodes: Record<string, string> = {},
+  namedCoastEntries: Array<{ svgId: string; parentProvince: string; coastAbbr: string }> = []
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -399,6 +400,16 @@ export function buildDsvgOutput(
   convertShapesToPaths(doc, ncLayer);
   // Same label promotion for named-coast paths (e.g. "mor/wc").
   relabelByInkscape(ncLayer);
+  // Apply user-assigned parentProvince/coastAbbr IDs from the NamedCoastEditor step.
+  // Mirrors the unitPositionCodes rename loop above. Uses inkscape:label ?? id as the
+  // lookup key (matching what extractProvinces shows users in the editor).
+  for (const child of Array.from(ncLayer.children)) {
+    const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
+    const entry = namedCoastEntries.find(e => e.svgId === svgId);
+    if (entry?.parentProvince && entry?.coastAbbr) {
+      child.setAttribute("id", `${entry.parentProvince}/${entry.coastAbbr}`);
+    }
+  }
   // Same group-flattening for named coasts.
   flattenGroupsToCompoundPaths(doc, ncLayer);
   root.appendChild(ncLayer);

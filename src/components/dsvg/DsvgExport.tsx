@@ -9,16 +9,18 @@ import { analyzeSvgFonts, embedFonts } from "@/utils/fontEmbed";
 import type { SvgFontInfo } from "@/utils/fontEmbed";
 import type { SvgTreeNode } from "@/utils/svgTree";
 import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { NamedCoastEntry } from "@/components/dsvg/NamedCoastEditor";
 
 interface DsvgExportProps {
   svgContent: string;
   assignments: LayerAssignments;
   unitPositionCodes: Record<string, string>;
+  namedCoastEntries: NamedCoastEntry[];
   tree: SvgTreeNode[];
   fileName: string;
 }
 
-export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, fileName }: DsvgExportProps) {
+export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCoastEntries, tree, fileName }: DsvgExportProps) {
   const navigate = useNavigate();
   const displayNodes = useMemo(
     () => tree.flatMap(n => (n.children.length > 0 ? n.children : [n])),
@@ -139,7 +141,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes);
+      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes, namedCoastEntries);
       if (embedFontsEnabled && fontInfo) {
         output = await embedFonts(output, fontInfo, uploadedFonts);
       }

@@ -108,6 +108,103 @@ describe("buildDsvgOutput – Inkscape sodipodi:namedview index shift", () => {
   });
 });
 
+// SVG with provinces (root-0) and named-coasts (root-1) at the root level.
+function makeCoastSvg(coastPaths: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="spa" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">${coastPaths}</g>
+</svg>`;
+}
+
+const COAST_ASSIGNMENTS: LayerAssignments = {
+  provinces: "root-0",
+  namedCoasts: "root-1",
+  unitPositions: null,
+  provinceNames: null,
+  borders: null,
+  supplyCenters: null,
+};
+
+describe("buildDsvgOutput – named coast ID renaming", () => {
+  it("renames coast paths to parentProvince/coastAbbr using plain id lookup", () => {
+    const svg = makeCoastSvg(`
+      <path id="spain nc" d="M0 0 L5 0 L5 5 Z"/>
+      <path id="spain sc" d="M5 0 L10 0 L10 5 Z"/>
+    `);
+    const entries = [
+      { svgId: "spain nc", parentProvince: "spa", coastAbbr: "nc" },
+      { svgId: "spain sc", parentProvince: "spa", coastAbbr: "sc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spa/nc");
+    expect(ids).toContain("spa/sc");
+  });
+
+  it("renames coast paths via inkscape:label lookup (Inkscape SVGs)", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"
+      xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+      viewBox="0 0 100 100">
+  <g id="provs"><path id="spa" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">
+    <path id="path11" inkscape:label="spain nc" d="M0 0 L5 0 L5 5 Z"/>
+    <path id="path12" inkscape:label="spain sc" d="M5 0 L10 0 L10 5 Z"/>
+  </g>
+</svg>`;
+    const entries = [
+      { svgId: "spain nc", parentProvince: "spa", coastAbbr: "nc" },
+      { svgId: "spain sc", parentProvince: "spa", coastAbbr: "sc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spa/nc");
+    expect(ids).toContain("spa/sc");
+  });
+
+  it("leaves coast paths with no matching entry unchanged", () => {
+    const svg = makeCoastSvg(`
+      <path id="spain nc" d="M0 0 L5 0 L5 5 Z"/>
+      <path id="unknown coast" d="M5 0 L10 0 L10 5 Z"/>
+    `);
+    const entries = [
+      { svgId: "spain nc", parentProvince: "spa", coastAbbr: "nc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spa/nc");
+    expect(ids).toContain("unknown coast");
+  });
+
+  it("skips entries with empty parentProvince or coastAbbr", () => {
+    const svg = makeCoastSvg(`<path id="spain nc" d="M0 0 L5 0 L5 5 Z"/>`);
+    const entries = [
+      { svgId: "spain nc", parentProvince: "", coastAbbr: "nc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spain nc");
+    expect(ids).not.toContain("/nc");
+  });
+
+  it("produces no coast elements when namedCoastEntries is empty (existing behaviour)", () => {
+    const svg = makeCoastSvg(`<path id="spain coasts" d="M0 0 L5 0 L5 5 Z"/>`);
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, []);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    // Without entries the original id is preserved unchanged
+    expect(ids).toContain("spain coasts");
+  });
+});
+
 describe("buildDsvgOutput – root fill propagation", () => {
   it("adds fill='none' to paths without explicit fill when root has fill='none'", () => {
     const svg = makeSvg(` fill="none"`);
