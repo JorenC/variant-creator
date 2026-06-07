@@ -625,6 +625,7 @@ export function DvarCreator() {
   const [parsedDsvg, setParsedDsvgState] = useState<ParsedDsvg | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingDvar, setIsDraggingDvar] = useState(false);
   const [basicInfo, setBasicInfo] = useState<BasicInfoValues | null>(null);
   const [nations, setNations] = useState<NationsValues["nations"] | null>(null);
   const [provincesData, setProvincesData] = useState<ProvincesFormValues | null>(null);
@@ -766,7 +767,9 @@ export function DvarCreator() {
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".d.svg")) {
       setError(
-        "Please upload a .d.svg file. Create one using the dSVG Creator first."
+        file.name.toLowerCase().endsWith(".svg")
+          ? "This looks like a regular SVG file. A .d.svg is a specially prepared file — create one using the dSVG Creator first."
+          : "Please upload a .d.svg file. Create one using the dSVG Creator first."
       );
       return;
     }
@@ -857,6 +860,13 @@ export function DvarCreator() {
     if (file) processFile(file);
   };
 
+  const handleDvarDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingDvar(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processDvarFile(file);
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
@@ -876,6 +886,7 @@ export function DvarCreator() {
     setDominanceRulesData(null);
     setPhaseProgressionData(null);
     setVictoryConditionsData(null);
+    setAdjudicationModifiersData(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setPendingDvar(null);
     setPendingDvarFileName(null);
@@ -1084,6 +1095,9 @@ export function DvarCreator() {
                   Existing dVAR{" "}
                   <span className="text-xs font-normal text-muted-foreground">(optional — pre-fills all settings)</span>
                 </Label>
+                <p className="text-xs text-muted-foreground">
+                  If updating an existing variant, upload your previous <span className="font-mono">.dvar</span> first — then upload the dSVG to continue.
+                </p>
                 <div
                   role="button"
                   tabIndex={0}
@@ -1092,9 +1106,14 @@ export function DvarCreator() {
                     if (e.key === "Enter" || e.key === " ")
                       dvarInputRef.current?.click();
                   }}
+                  onDrop={handleDvarDrop}
+                  onDragOver={e => { e.preventDefault(); setIsDraggingDvar(true); }}
+                  onDragLeave={e => { e.preventDefault(); setIsDraggingDvar(false); }}
                   className={cn(
                     "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-12 transition-colors",
-                    pendingDvar
+                    isDraggingDvar
+                      ? "border-primary bg-primary/5"
+                      : pendingDvar
                       ? "border-primary bg-primary/5"
                       : "border-muted-foreground/25 hover:border-muted-foreground/50"
                   )}
@@ -1103,7 +1122,7 @@ export function DvarCreator() {
                     <>
                       <Download className="h-10 w-10 text-primary" />
                       <p className="text-center text-sm font-medium">{pendingDvarFileName}</p>
-                      <p className="text-center text-xs text-muted-foreground">Upload your dSVG to continue</p>
+                      <p className="text-center text-xs text-muted-foreground">Now upload your dSVG to continue</p>
                     </>
                   ) : (
                     <>

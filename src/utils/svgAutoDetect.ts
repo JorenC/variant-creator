@@ -66,6 +66,7 @@ function getElementCenter(el: Element): { x: number; y: number } | null {
     minY = Math.min(minY, b.top);
     maxX = Math.max(maxX, b.right);
     maxY = Math.max(maxY, b.bottom);
+    p.remove();
   }
   return isFinite(minX) ? { x: (minX + maxX) / 2, y: (minY + maxY) / 2 } : null;
 }
@@ -124,6 +125,10 @@ export function autoDetectUnitProvinces(
         break;
       }
     }
+  }
+
+  for (const { paths } of provinceGroups) {
+    for (const p of paths) p.remove();
   }
 
   return result;

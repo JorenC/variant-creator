@@ -56,10 +56,24 @@ export function UploadDiplicityPage() {
               map, adjacency, and rules all work the way you intend — before
               sharing it with anyone else.
             </p>
-            <p className="text-sm text-muted-foreground">
-              Private games on custom maps are on our roadmap, but not available
-              yet. For now, the Sandbox is the best way to playtest your
-              variant.
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xl font-semibold">Play your variant</h2>
+            <p>
+              From the{" "}
+              <a
+                href="http://www.diplicity.com/variants"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-4"
+              >
+                diplicity.com/variants
+              </a>{" "}
+              page you can now create a private game — you&apos;ll be playing
+              all sides yourself. When you&apos;re ready to bring others in,
+              use the <strong>Share &amp; Invite</strong> link inside the game
+              to invite players directly.
             </p>
           </section>
 

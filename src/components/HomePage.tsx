@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Layers, FileCode2, FileJson, Upload, Pencil } from "lucide-react";
+import { ArrowRight, Layers, FileCode2, FileJson, Upload, Pencil, Wand2 } from "lucide-react";
 import { AppHeader } from "@/components/common/AppHeader";
 
 interface MapTile {
@@ -58,21 +58,7 @@ export function HomePage() {
     <div className="min-h-screen bg-background">
 
       {/* ── Sticky header ───────────────────────────────────────────────────── */}
-      <AppHeader
-        actions={
-          <>
-            <Button size="sm" variant="ghost" onClick={() => navigate("/dsvg-creator")}>
-              dSVG Creator
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => navigate("/dvar-creator")}>
-              dVAR Creator
-            </Button>
-            <Button size="sm" onClick={() => navigate("/upload-diplicity")}>
-              Upload
-            </Button>
-          </>
-        }
-      />
+      <AppHeader />
 
       <main>
         {/* ── Hero ────────────────────────────────────────────────────────────── */}
@@ -133,17 +119,21 @@ export function HomePage() {
               <h1 className="mb-4 text-4xl font-bold tracking-tight xl:text-5xl">
                 Create Custom Diplomacy Variants
               </h1>
-              <p className="mb-8 text-lg text-muted-foreground">
+              <p className="mb-4 text-lg text-muted-foreground">
                 Design maps, define game rules, and publish playable Diplomacy
                 variants directly to Diplicity.
+              </p>
+              <p className="mb-8 text-sm text-muted-foreground">
+                Start by following the instructions below, or quickly jump to the tools.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button size="lg" onClick={() => navigate("/dsvg-creator")}>
                   dSVG Creator
                   <ArrowRight className="h-4 w-4" />
                 </Button>
-                <Button size="lg" variant="outline" onClick={() => navigate("/dvar-creator")}>
+                <Button size="lg" onClick={() => navigate("/dvar-creator")}>
                   dVAR Creator
+                  <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -206,7 +196,7 @@ export function HomePage() {
             </button>
           </GuideSection>
 
-          <GuideSection id="map-extraction" number="2" icon={<Layers className="h-4 w-4" />} title="Vectorize with AI">
+          <GuideSection id="map-extraction" number="2" icon={<Wand2 className="h-4 w-4" />} title="Vectorize with AI">
             <p className="text-muted-foreground leading-relaxed">
               Run the vectorizer script over your PNG using Claude. Claude will trace your province
               shapes, set up the correct layer structure, and tweak the settings to fit your map's
@@ -280,7 +270,7 @@ export function HomePage() {
               <div>
                 <p className="font-semibold">Diplicity</p>
                 <a
-                  href="https://www.diplicity.com"
+                  href="https://www.diplicity.com/variants"
                   target="_blank"
                   rel="noreferrer"
                   className="text-sm text-muted-foreground underline-offset-4 hover:underline"
@@ -294,13 +284,14 @@ export function HomePage() {
               <span className="font-mono text-xs">.dvar</span> files to the Diplicity
               platform so other players can join and play your custom variant.
             </p>
-            <Button
-              className="mt-5"
+            <button
+              type="button"
               onClick={() => navigate("/upload-diplicity")}
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-4 hover:opacity-70"
             >
               Upload to Diplicity
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </GuideSection>
 
         </div>

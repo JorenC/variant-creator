@@ -6,6 +6,7 @@ paper.setup(new paper.Size(1, 1));
 export function calculateCentroid(pathD: string): Position {
   const path = new paper.Path(pathD);
   const center = path.bounds.center;
+  path.remove();
   return { x: center.x, y: center.y };
 }
 
@@ -25,5 +26,7 @@ export function detectPathIntersections(pathA: string, pathB: string): boolean {
   const paperPathA = new paper.Path(pathA);
   const paperPathB = new paper.Path(pathB);
   const intersections = paperPathA.getIntersections(paperPathB);
+  paperPathA.remove();
+  paperPathB.remove();
   return intersections.length >= 2;
 }
