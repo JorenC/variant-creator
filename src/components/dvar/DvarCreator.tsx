@@ -644,6 +644,10 @@ export function DvarCreator() {
   const [reconcileMismatches, setReconcileMismatches] = useState<ReconcileMismatches | null>(null);
   const [provinceReconcileMap, setProvinceReconcileMap] = useState<ReconcileMap>({});
   const [coastReconcileMap, setCoastReconcileMap] = useState<ReconcileMap>({});
+  const basicInfoRef = useRef<BasicInfoFormHandle>(null);
+  const nationsRef = useRef<NationsFormHandle>(null);
+  const provinceNamesRef = useRef<ProvinceNamesFormHandle>(null);
+  const provinceTypesRef = useRef<ProvinceTypesFormHandle>(null);
   const homeNationsRef = useRef<HomeNationsFormHandle>(null);
   const adjacenciesRef = useRef<AdjacenciesFormHandle>(null);
   const dominanceRulesRef = useRef<DominanceRulesFormHandle>(null);
@@ -1006,10 +1010,69 @@ export function DvarCreator() {
   };
 
   const handleSaveProgress = () => {
+    let currentBasicInfo = basicInfo;
+    let currentNations = nations;
+    let currentProvincesData = provincesData;
+    let currentHomeNationsData = homeNationsData;
+    let currentAdjacenciesData = adjacenciesData;
+    let currentDominanceRulesData = dominanceRulesData;
+    let currentPhaseProgressionData = phaseProgressionData;
+    let currentVictoryConditionsData = victoryConditionsData;
+    let currentAdjudicationModifiersData = adjudicationModifiersData;
+
+    if (step === "basic-info" && basicInfoRef.current) {
+      currentBasicInfo = basicInfoRef.current.getValues();
+    } else if (step === "nations" && nationsRef.current) {
+      currentNations = nationsRef.current.getValues();
+    } else if (step === "province-names" && provinceNamesRef.current && parsedDsvg) {
+      const formValues = provinceNamesRef.current.getValues();
+      const base = (provincesData && provincesData.provinces.length > 0)
+        ? provincesData.provinces
+        : buildInitialProvinces(parsedDsvg);
+      const nameMap = new Map(formValues.provinces.map(p => [p.id, p]));
+      currentProvincesData = {
+        provinces: base.map(p => {
+          const n = nameMap.get(p.id);
+          return {
+            ...p,
+            name: n?.name ?? p.name,
+            namedCoasts: p.namedCoasts.map((c, j) => ({
+              ...c,
+              name: n?.namedCoasts[j]?.name ?? c.name,
+            })),
+          };
+        }),
+      };
+    } else if (step === "province-types" && provinceTypesRef.current && parsedDsvg) {
+      const formValues = provinceTypesRef.current.getValues();
+      const base = (provincesData && provincesData.provinces.length > 0)
+        ? provincesData.provinces
+        : buildInitialProvinces(parsedDsvg);
+      const typeMap = new Map(formValues.provinces.map(p => [p.id, p]));
+      currentProvincesData = {
+        provinces: base.map(p => {
+          const t = typeMap.get(p.id);
+          return { ...p, type: t?.type ?? p.type, supplyCenter: t?.supplyCenter ?? p.supplyCenter };
+        }),
+      };
+    } else if (step === "home-nations" && homeNationsRef.current) {
+      currentHomeNationsData = homeNationsRef.current.getValues();
+    } else if (step === "adjacencies" && adjacenciesRef.current) {
+      currentAdjacenciesData = adjacenciesRef.current.getValues();
+    } else if (step === "dominance-rules" && dominanceRulesRef.current) {
+      currentDominanceRulesData = dominanceRulesRef.current.getValues();
+    } else if (step === "phase-progression" && phaseProgressionRef.current) {
+      currentPhaseProgressionData = phaseProgressionRef.current.getValues();
+    } else if (step === "victory-conditions" && victoryConditionsRef.current) {
+      currentVictoryConditionsData = victoryConditionsRef.current.getValues();
+    } else if (step === "adjudication-modifiers" && adjudicationModifiersRef.current) {
+      currentAdjudicationModifiersData = adjudicationModifiersRef.current.getValues();
+    }
+
     const output = assemblePartialDvar(
-      basicInfo, nations, provincesData, homeNationsData,
-      adjacenciesData, dominanceRulesData, phaseProgressionData,
-      victoryConditionsData, adjudicationModifiersData,
+      currentBasicInfo, currentNations, currentProvincesData, currentHomeNationsData,
+      currentAdjacenciesData, currentDominanceRulesData, currentPhaseProgressionData,
+      currentVictoryConditionsData, currentAdjudicationModifiersData,
     );
     const id = basicInfo?.id?.trim() || fileName?.replace(/\.d\.svg$/i, "") || "draft";
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
@@ -1195,6 +1258,7 @@ export function DvarCreator() {
 
             {step === "basic-info" && (
               <BasicInfoForm
+                ref={basicInfoRef}
                 formId={basicInfoFormId}
                 defaultValues={basicInfo ?? undefined}
                 onSubmit={handleBasicInfoSubmit}
@@ -1203,6 +1267,7 @@ export function DvarCreator() {
 
             {step === "nations" && (
               <NationsForm
+                ref={nationsRef}
                 formId={nationsFormId}
                 defaultValues={nations ? { nations } : undefined}
                 onSubmit={handleNationsSubmit}
@@ -1215,6 +1280,7 @@ export function DvarCreator() {
                 : buildInitialProvinces(parsedDsvg);
               return (
                 <ProvinceNamesForm
+                  ref={provinceNamesRef}
                   formId={provinceNamesFormId}
                   svgContent={svgContent}
                   defaultValues={{ provinces: base.map(p => ({ id: p.id, name: p.name, namedCoasts: p.namedCoasts.map(c => ({ id: c.id, name: c.name })) })) }}
@@ -1232,6 +1298,7 @@ export function DvarCreator() {
               );
               return (
                 <ProvinceTypesForm
+                  ref={provinceTypesRef}
                   formId={provinceTypesFormId}
                   svgContent={svgContent}
                   namedCoastParentIds={namedCoastParentIds}
@@ -1429,21 +1496,20 @@ export function DvarCreator() {
 
 // ─── BasicInfoForm ─────────────────────────────────────────────────────────────
 
+interface BasicInfoFormHandle {
+  getValues: () => BasicInfoValues;
+}
+
 interface BasicInfoFormProps {
   formId: string;
   defaultValues?: Partial<BasicInfoValues>;
   onSubmit: (values: BasicInfoValues) => void;
 }
 
-function BasicInfoForm({ formId, defaultValues, onSubmit }: BasicInfoFormProps) {
+const BasicInfoForm = forwardRef<BasicInfoFormHandle, BasicInfoFormProps>(function BasicInfoForm({ formId, defaultValues, onSubmit }, ref) {
   const idEdited = useRef(false);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    formState: { errors },
-  } = useForm<BasicInfoValues>({
+  const form = useForm<BasicInfoValues>({
     resolver: zodResolver(basicInfoSchema),
     defaultValues: {
       name: "",
@@ -1455,6 +1521,10 @@ function BasicInfoForm({ formId, defaultValues, onSubmit }: BasicInfoFormProps) 
       ...defaultValues,
     },
   });
+
+  const { register, handleSubmit, setValue, formState: { errors } } = form;
+
+  useImperativeHandle(ref, () => ({ getValues: () => form.getValues() }), [form]);
 
   const { onChange: rhfNameOnChange, ...nameRegisterRest } = register("name");
   const { onChange: rhfIdOnChange, ...idRegisterRest } = register("id");
@@ -1559,9 +1629,15 @@ function BasicInfoForm({ formId, defaultValues, onSubmit }: BasicInfoFormProps) 
       </div>
     </form>
   );
-}
+});
+
+BasicInfoForm.displayName = "BasicInfoForm";
 
 // ─── NationsForm ───────────────────────────────────────────────────────────────
+
+interface NationsFormHandle {
+  getValues: () => NationsValues["nations"];
+}
 
 interface NationsFormProps {
   formId: string;
@@ -1569,15 +1645,8 @@ interface NationsFormProps {
   onSubmit: (values: NationsValues) => void;
 }
 
-function NationsForm({ formId, defaultValues, onSubmit }: NationsFormProps) {
-  const {
-    control,
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<NationsValues>({
+const NationsForm = forwardRef<NationsFormHandle, NationsFormProps>(function NationsForm({ formId, defaultValues, onSubmit }, ref) {
+  const form = useForm<NationsValues>({
     resolver: zodResolver(nationsSchema),
     defaultValues: {
       nations: defaultValues?.nations ?? [
@@ -1585,6 +1654,17 @@ function NationsForm({ formId, defaultValues, onSubmit }: NationsFormProps) {
       ],
     },
   });
+
+  const {
+    control,
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = form;
+
+  useImperativeHandle(ref, () => ({ getValues: () => form.getValues().nations }), [form]);
 
   const { fields, append, remove } = useFieldArray({ control, name: "nations" });
   const watchedNations = watch("nations");
@@ -1660,9 +1740,15 @@ function NationsForm({ formId, defaultValues, onSubmit }: NationsFormProps) {
       </Button>
     </form>
   );
-}
+});
+
+NationsForm.displayName = "NationsForm";
 
 // ─── ProvinceNamesForm ────────────────────────────────────────────────────────
+
+interface ProvinceNamesFormHandle {
+  getValues: () => ProvinceNamesFormValues;
+}
 
 interface ProvinceNamesFormProps {
   formId: string;
@@ -1671,14 +1757,18 @@ interface ProvinceNamesFormProps {
   onSubmit: (values: ProvinceNamesFormValues) => void;
 }
 
-function ProvinceNamesForm({ formId, svgContent, defaultValues, onSubmit }: ProvinceNamesFormProps) {
+const ProvinceNamesForm = forwardRef<ProvinceNamesFormHandle, ProvinceNamesFormProps>(function ProvinceNamesForm({ formId, svgContent, defaultValues, onSubmit }, ref) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<ProvinceNamesFormValues>({
+  const form = useForm<ProvinceNamesFormValues>({
     resolver: zodResolver(provinceNamesFormSchema),
     defaultValues,
   });
+
+  const { register, handleSubmit, formState: { errors } } = form;
+
+  useImperativeHandle(ref, () => ({ getValues: () => form.getValues() }), [form]);
 
   const previewSvg = useMemo(
     () => buildProvincePreviewSvg(svgContent, highlightedId),
@@ -1775,7 +1865,9 @@ function ProvinceNamesForm({ formId, svgContent, defaultValues, onSubmit }: Prov
       </div>
     </form>
   );
-}
+});
+
+ProvinceNamesForm.displayName = "ProvinceNamesForm";
 
 // ─── SC auto-detection ───────────────────────────────────────────────────────
 
@@ -1835,6 +1927,10 @@ function detectSCProvinces(svgContent: string): Set<string> {
 
 // ─── ProvinceTypesForm ────────────────────────────────────────────────────────
 
+interface ProvinceTypesFormHandle {
+  getValues: () => ProvinceTypesFormValues;
+}
+
 interface ProvinceTypesFormProps {
   formId: string;
   svgContent: string;
@@ -1849,14 +1945,18 @@ const PROVINCE_TYPE_COLORS: Record<string, string> = {
   sea: "#3b82f6",
 };
 
-function ProvinceTypesForm({ formId, svgContent, namedCoastParentIds, defaultValues, onSubmit }: ProvinceTypesFormProps) {
+const ProvinceTypesForm = forwardRef<ProvinceTypesFormHandle, ProvinceTypesFormProps>(function ProvinceTypesForm({ formId, svgContent, namedCoastParentIds, defaultValues, onSubmit }, ref) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { control, handleSubmit, setValue, formState: { errors } } = useForm<ProvinceTypesFormValues>({
+  const form = useForm<ProvinceTypesFormValues>({
     resolver: zodResolver(provinceTypesFormSchema),
     defaultValues,
   });
+
+  const { control, handleSubmit, setValue, formState: { errors } } = form;
+
+  useImperativeHandle(ref, () => ({ getValues: () => form.getValues() }), [form]);
 
   const watchedProvinces = useWatch({ control, name: "provinces" });
 
@@ -2004,12 +2104,15 @@ function ProvinceTypesForm({ formId, svgContent, namedCoastParentIds, defaultVal
       </div>
     </form>
   );
-}
+});
+
+ProvinceTypesForm.displayName = "ProvinceTypesForm";
 
 // ─── HomeNationsForm ──────────────────────────────────────────────────────────
 
 interface HomeNationsFormHandle {
   submit: () => void;
+  getValues: () => HomeNationsData;
 }
 
 interface HomeNationsFormProps {
@@ -2052,6 +2155,7 @@ const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsFormProps>(
         if (hasErrors) return;
         onSubmit(assignment);
       },
+      getValues: () => assignment,
     }), [assignment, onSubmit, sortedProvinces]);
 
     const provinceColors = useMemo(() => {
@@ -2263,6 +2367,7 @@ HomeNationsForm.displayName = "HomeNationsForm";
 
 interface AdjacenciesFormHandle {
   submit: () => void;
+  getValues: () => DvarAdjacencyMap;
 }
 
 interface AdjacenciesFormProps {
@@ -2295,6 +2400,7 @@ const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesFormProps>(
 
     useImperativeHandle(ref, () => ({
       submit: () => onSubmit(adjacencyMap),
+      getValues: () => adjacencyMap,
     }));
 
     const { shapes, viewBox } = useMemo(
@@ -2831,6 +2937,7 @@ AdjacenciesForm.displayName = "AdjacenciesForm";
 
 interface DominanceRulesFormHandle {
   submit: () => void;
+  getValues: () => DominanceRulesData;
 }
 
 interface DominanceRulesFormProps {
@@ -2861,7 +2968,7 @@ const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFo
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [addScDialogProvince, setAddScDialogProvince] = useState<string | null>(null);
 
-    useImperativeHandle(ref, () => ({ submit: () => onSubmit(rulesData) }));
+    useImperativeHandle(ref, () => ({ submit: () => onSubmit(rulesData), getValues: () => rulesData }));
 
     const { shapes, viewBox } = useMemo(() => extractDsvgProvinceShapes(svgContent), [svgContent]);
 
@@ -3207,6 +3314,7 @@ DominanceRulesForm.displayName = "DominanceRulesForm";
 // ─── PhaseProgressionForm ─────────────────────────────────────────────────────
 
 interface PhaseProgressionFormHandle {
+  getValues: () => PhaseProgressionData;
   submit: () => void;
 }
 
@@ -3221,7 +3329,7 @@ const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, PhaseProgres
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-    useImperativeHandle(ref, () => ({ submit: () => onSubmit(entries) }));
+    useImperativeHandle(ref, () => ({ submit: () => onSubmit(entries), getValues: () => entries }));
 
     const updateEntry = <K extends keyof PhaseEntry>(index: number, key: K, value: PhaseEntry[K]) => {
       setEntries(prev => prev.map((e, i) => (i === index ? { ...e, [key]: value } : e)));
@@ -3348,6 +3456,7 @@ PhaseProgressionForm.displayName = "PhaseProgressionForm";
 
 interface VictoryConditionsFormHandle {
   submit: () => void;
+  getValues: () => VictoryConditionsData;
 }
 
 interface VictoryConditionsFormProps {
@@ -3360,7 +3469,7 @@ const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, VictoryCon
   ({ provinces, defaultValues, onSubmit }, ref) => {
     const [conditions, setConditions] = useState<VictoryConditionsData>(defaultValues);
 
-    useImperativeHandle(ref, () => ({ submit: () => onSubmit(conditions) }));
+    useImperativeHandle(ref, () => ({ submit: () => onSubmit(conditions), getValues: () => conditions }));
 
     const addCondition = () => {
       setConditions(prev => [...prev, { type: "supply-center-majority", supplyCenters: 18 }]);
@@ -3530,6 +3639,7 @@ VictoryConditionsForm.displayName = "VictoryConditionsForm";
 
 interface AdjudicationModifiersFormHandle {
   submit: () => void;
+  getValues: () => string[];
 }
 
 interface AdjudicationModifiersFormProps {
@@ -3548,6 +3658,11 @@ const AdjudicationModifiersForm = forwardRef<AdjudicationModifiersFormHandle, Ad
         const modifiers: string[] = [];
         if (buildAnywhere) modifiers.push("allow-builds-in-non-home-centers");
         onSubmit(modifiers);
+      },
+      getValues: () => {
+        const modifiers: string[] = [];
+        if (buildAnywhere) modifiers.push("allow-builds-in-non-home-centers");
+        return modifiers;
       },
     }));
 

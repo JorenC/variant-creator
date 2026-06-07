@@ -7,6 +7,7 @@ vi.mock("paper", () => {
 
     const pathObj = {
       pathD,
+      remove: vi.fn(),
       bounds: {
         center: { x: 50, y: 50 },
       },
