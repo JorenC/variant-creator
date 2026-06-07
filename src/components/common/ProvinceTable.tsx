@@ -7,12 +7,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Province, Nation } from "@/types/variant";
+import type { Province, Nation, NamedCoast } from "@/types/variant";
 import { validateProvinceId } from "@/utils/idSuggestion";
 
 interface ProvinceTableProps {
   provinces: Province[];
   nations: Nation[];
+  namedCoastsByProvince: Record<string, NamedCoast[]>;
   selectedProvinceId: string | null;
   onProvinceSelect: (provinceId: string) => void;
   onProvinceHover: (provinceId: string | null) => void;
@@ -28,6 +29,7 @@ const PROVINCE_TYPES: Province["type"][] = ["land", "sea", "coastal", "namedCoas
 export const ProvinceTable: React.FC<ProvinceTableProps> = ({
   provinces,
   nations,
+  namedCoastsByProvince,
   selectedProvinceId,
   onProvinceSelect,
   onProvinceHover,
@@ -78,6 +80,13 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
   const handleStartingUnitChange = (province: Province, unitType: "Army" | "Fleet" | null) => {
     onProvinceUpdate(province.id, {
       startingUnit: unitType ? { type: unitType } : null,
+    });
+  };
+
+  const handleCoastChange = (province: Province, coastId: string) => {
+    if (!province.startingUnit) return;
+    onProvinceUpdate(province.id, {
+      startingUnit: { ...province.startingUnit, coast: coastId || undefined },
     });
   };
 
@@ -248,6 +257,28 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
                       ))}
                     </SelectContent>
                   </Select>
+                  {province.type === "namedCoasts" &&
+                    province.startingUnit?.type === "Fleet" &&
+                    (namedCoastsByProvince[province.id] ?? []).length > 0 && (
+                      <Select
+                        value={province.startingUnit.coast ?? ""}
+                        onValueChange={(value) => handleCoastChange(province, value)}
+                      >
+                        <SelectTrigger
+                          className="mt-1 w-24"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <SelectValue placeholder="Coast" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(namedCoastsByProvince[province.id] ?? []).map((coast) => (
+                            <SelectItem key={coast.id} value={coast.id}>
+                              {coast.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   {errors.length > 0 && (
                     <div className="mt-1">
                       {errors.map((error, i) => (

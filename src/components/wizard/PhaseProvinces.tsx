@@ -48,6 +48,14 @@ function validateProvinces(provinces: Province[]): Map<string, string[]> {
       provinceErrors.push("Army cannot start on sea province");
     }
 
+    if (
+      province.type === "namedCoasts" &&
+      province.startingUnit?.type === "Fleet" &&
+      !province.startingUnit.coast
+    ) {
+      provinceErrors.push("Fleet on a named-coast province requires a coast selection");
+    }
+
     if (province.startingUnit && !province.supplyCenter) {
       provinceErrors.push("Starting unit requires supply center");
     }
@@ -73,6 +81,15 @@ export function PhaseProvinces() {
     if (!variant) return new Map<string, string[]>();
     return validateProvinces(variant.provinces);
   }, [variant]);
+
+  const namedCoastsByProvince = useMemo(() => {
+    const coasts = variant?.namedCoasts ?? [];
+    const map: Record<string, (typeof coasts)[number][]> = {};
+    for (const coast of coasts) {
+      (map[coast.parentId] ??= []).push(coast);
+    }
+    return map;
+  }, [variant?.namedCoasts]);
 
   const hasInitialized = useRef(false);
 
@@ -185,6 +202,7 @@ export function PhaseProvinces() {
             <ProvinceTable
               provinces={provinces}
               nations={nations}
+              namedCoastsByProvince={namedCoastsByProvince}
               selectedProvinceId={selectedProvinceId}
               onProvinceSelect={handleProvinceClick}
               onProvinceHover={setHoveredProvinceId}
