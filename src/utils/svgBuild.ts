@@ -173,6 +173,44 @@ function convertShapesToPaths(doc: Document, layer: Element): void {
   }
 }
 
+// Collapses any <g> direct-children of a layer into a single compound <path>.
+// The diplicity validator requires each element in provinces/named-coasts to be
+// a <path> with an id; groups fail validation even when the group itself has an id.
+// Child paths are deduplicated (Inkscape sometimes emits duplicate subpaths as
+// artefacts) and their d attributes are concatenated into one compound path.
+function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
+  for (const child of Array.from(layer.children)) {
+    if (child.tagName.toLowerCase() !== "g") continue;
+
+    const seenDs = new Set<string>();
+    const uniqueDs: string[] = [];
+    for (const pathEl of Array.from(child.querySelectorAll("path"))) {
+      const d = pathEl.getAttribute("d");
+      if (d && !seenDs.has(d)) {
+        seenDs.add(d);
+        uniqueDs.push(d);
+      }
+    }
+
+    if (uniqueDs.length === 0) continue;
+
+    const merged = doc.createElementNS(SVG_NS, "path");
+    const id = child.getAttribute("id");
+    if (id) merged.setAttribute("id", id);
+
+    const firstPath = child.querySelector("path");
+    if (firstPath) {
+      const fill = firstPath.getAttribute("fill");
+      if (fill) merged.setAttribute("fill", fill);
+      const style = firstPath.getAttribute("style");
+      if (style) merged.setAttribute("style", style);
+    }
+
+    merged.setAttribute("d", uniqueDs.join(" "));
+    layer.replaceChild(merged, child);
+  }
+}
+
 // ─── Path centre extraction (for unit-position markers) ──────────────────────
 
 // Returns the bounding-box centre and approximate radius of a path element by
@@ -348,6 +386,11 @@ export function buildDsvgOutput(
   // meaningful ids (e.g. "edi") rather than auto-generated ones ("path120").
   // For Figma/generic SVGs that have no inkscape:label this is a no-op.
   relabelByInkscape(pLayer);
+  // Merge any <g> children into compound <path> elements. Inkscape sometimes
+  // produces tiny artefact sub-paths that share a group with the main province
+  // shape; the diplicity validator requires each provinces-layer child to be a
+  // <path> with an id, so groups must be flattened.
+  flattenGroupsToCompoundPaths(doc, pLayer);
   root.appendChild(pLayer);
 
   const ncLayer = namedCoastsEl ?? makeLayerGroup(doc, "named-coasts");
@@ -356,6 +399,8 @@ export function buildDsvgOutput(
   convertShapesToPaths(doc, ncLayer);
   // Same label promotion for named-coast paths (e.g. "mor/wc").
   relabelByInkscape(ncLayer);
+  // Same group-flattening for named coasts.
+  flattenGroupsToCompoundPaths(doc, ncLayer);
   root.appendChild(ncLayer);
 
   const upLayer = unitPositionsEl ?? makeLayerGroup(doc, "unit-positions");
