@@ -24,7 +24,7 @@ export interface Province {
   path: string;
   homeNation: string | null;
   supplyCenter: boolean;
-  startingUnit: { type: "Army" | "Fleet" } | null;
+  startingUnit: { type: "Army" | "Fleet"; coast?: string } | null;
   adjacencies: string[];
   labels: Label[];
   unitPosition: Position;

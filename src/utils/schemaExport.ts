@@ -98,6 +98,8 @@ function toKebabId(name: string): string {
 type InternalProvinceType = "land" | "sea" | "coastal" | "namedCoasts";
 
 function inferPass(fromType: InternalProvinceType, toType: InternalProvinceType): "army" | "fleet" | "both" {
+  // namedCoasts province bodies are army-only; fleet access goes through coast subprovinces
+  if (fromType === "namedCoasts" || toType === "namedCoasts") return "army";
   if (fromType === "sea" || toType === "sea") return "fleet";
   if (fromType === "coastal" && toType === "coastal") return "both";
   return "army";
@@ -149,7 +151,7 @@ function buildInitialState(variant: VariantDefinition): SchemaInitialState {
       units.push({
         nation: province.homeNation,
         type: province.startingUnit.type,
-        location: province.id,
+        location: province.startingUnit.coast ?? province.id,
       });
     }
     if (province.supplyCenter && province.homeNation) {
