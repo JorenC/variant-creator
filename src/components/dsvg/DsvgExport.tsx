@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, ChevronDown, ChevronRight, Loader2, CheckCircle2, AlertCircle, Upload } from "lucide-react";
+import { Download, ChevronDown, ChevronRight, Loader2, CheckCircle2, AlertCircle, Upload, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -87,6 +87,8 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
 
   const [embedFontsEnabled, setEmbedFontsEnabled] = useState(true);
   const [fontCheckLoading, setFontCheckLoading] = useState(false);
+  const [fontCheckError, setFontCheckError] = useState(false);
+  const [fontCheckRetry, setFontCheckRetry] = useState(0);
   const [fontInfo, setFontInfo] = useState<SvgFontInfo | null>(null);
   const [uploadedFonts, setUploadedFonts] = useState<Map<string, ArrayBuffer>>(new Map());
   const [isDownloading, setIsDownloading] = useState(false);
@@ -94,20 +96,27 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
   useEffect(() => {
     if (!embedFontsEnabled) {
       setFontInfo(null);
+      setFontCheckError(false);
       setUploadedFonts(new Map());
       return;
     }
     let cancelled = false;
     setFontCheckLoading(true);
+    setFontCheckError(false);
     setFontInfo(null);
     analyzeSvgFonts(svgContent).then(info => {
       if (!cancelled) {
         setFontInfo(info);
         setFontCheckLoading(false);
       }
+    }).catch(() => {
+      if (!cancelled) {
+        setFontCheckLoading(false);
+        setFontCheckError(true);
+      }
     });
     return () => { cancelled = true; };
-  }, [embedFontsEnabled, svgContent]);
+  }, [embedFontsEnabled, svgContent, fontCheckRetry]);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -232,6 +241,23 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Checking fonts…
                 </div>
+              ) : fontCheckError ? (
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5 text-destructive">
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    Font analysis failed
+                  </div>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setFontCheckRetry(r => r + 1)}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Retry
+                  </Button>
+                </div>
               ) : fontInfo && fontInfo.fonts.length > 0 ? (
                 <div className="flex flex-col gap-1">
                   {fontInfo.fonts.map(font => (
@@ -253,7 +279,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
           )}
         </div>
 
-        <Button onClick={handleDownload} disabled={isDownloading || fontCheckLoading}>
+        <Button onClick={handleDownload} disabled={isDownloading || fontCheckLoading || fontCheckError}>
           {isDownloading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

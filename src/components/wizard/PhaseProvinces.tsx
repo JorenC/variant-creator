@@ -110,9 +110,12 @@ export function PhaseProvinces() {
     >
   ) => {
     if (updates.id && updates.id !== provinceId) {
-      const updatedProvinces = provinces.map((p) =>
-        p.id === provinceId ? { ...p, ...updates } : p
-      );
+      const oldId = provinceId;
+      const newId = updates.id;
+      const updatedProvinces = provinces.map((p) => {
+        if (p.id === oldId) return { ...p, ...updates };
+        return { ...p, adjacencies: p.adjacencies.map((a) => (a === oldId ? newId : a)) };
+      });
       setProvinces(updatedProvinces);
 
       if (selectedProvinceId === provinceId) {
