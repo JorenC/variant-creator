@@ -206,4 +206,45 @@ describe("PhaseProvinces", () => {
     const { container } = renderWithRouter();
     expect(container.firstChild).toBeNull();
   });
+
+  it("shows validation error when fleet is set on namedCoasts province without a coast", async () => {
+    const variantWithNamedCoast = {
+      ...mockVariant,
+      provinces: [
+        {
+          id: "spa",
+          elementId: "province-spa",
+          name: "Spain",
+          type: "namedCoasts" as const,
+          path: "M0,0 L10,0 L10,10 Z",
+          homeNation: "england",
+          supplyCenter: true,
+          startingUnit: { type: "Fleet" as const },
+          adjacencies: [],
+          labels: [],
+          unitPosition: { x: 5, y: 5 },
+          dislodgedUnitPosition: { x: 8, y: 8 },
+        },
+      ],
+      namedCoasts: [
+        {
+          id: "spa/nc",
+          name: "Spain North Coast",
+          parentId: "spa",
+          path: "M0,0 Z",
+          adjacencies: [],
+          unitPosition: { x: 5, y: 2 },
+          dislodgedUnitPosition: { x: 8, y: 2 },
+        },
+      ],
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(variantWithNamedCoast));
+    renderWithRouter();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Fleet on a named-coast province requires a coast selection/i)
+      ).toBeInTheDocument();
+    });
+  });
 });
