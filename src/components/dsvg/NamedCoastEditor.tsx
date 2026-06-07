@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
+import type React from "react";
 import { AlertCircle } from "lucide-react";
 import {
   Select,
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { buildPreviewSvg } from "@/utils/svgPreview";
-import { extractProvinces, extractLayerPaths } from "@/utils/svgProvinces";
+import { extractProvinces, extractLayerPaths, detectAmbiguousGroups } from "@/utils/svgProvinces";
 import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
 
 export interface NamedCoastEntry {
@@ -61,6 +62,11 @@ export const NamedCoastEditor = forwardRef<
   const filteredSvg = useMemo(
     () => buildPreviewSvg(svgContent, assignments),
     [svgContent, assignments]
+  );
+
+  const ambiguousGroups = useMemo(
+    () => (namedCoastsKey ? detectAmbiguousGroups(svgContent, namedCoastsKey) : []),
+    [svgContent, namedCoastsKey]
   );
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -259,6 +265,18 @@ export const NamedCoastEditor = forwardRef<
       <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
         Link each named coast to its parent province using the dropdown, then add its abbreviation code (e.g. <code className="font-mono">nc</code>, <code className="font-mono">sc</code>). If your SVG IDs follow the <code className="font-mono">province/coast</code> convention (e.g. <code className="font-mono">stp/nc</code>), this fills in automatically. The full coast identifier needs to match the named coast exactly — for example <code className="font-mono">kie/sc</code> or <code className="font-mono">mek/river</code>.
       </p>
+      {ambiguousGroups.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Some groups have mixed labeling:{" "}
+            {ambiguousGroups.map(id => (
+              <code key={id} className="font-mono">{id}</code>
+            )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}.
+            {" "}Labeled children will be expanded individually; unlabeled children will be merged into one shape. Verify the coast count is correct.
+          </span>
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
       {formContent}
 

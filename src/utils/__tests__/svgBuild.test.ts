@@ -205,6 +205,54 @@ describe("buildDsvgOutput – named coast ID renaming", () => {
   });
 });
 
+describe("buildDsvgOutput – named coast Inkscape sub-layer flattening", () => {
+  it("expands labeled sub-layer groups into individual coast paths", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"
+      xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+      viewBox="0 0 100 100">
+  <g id="provs"><path id="plu" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">
+    <g id="g1" inkscape:label="Plutarch Coasts">
+      <path id="path1" inkscape:label="plu/sg" d="M0 0 L5 0 L5 5 Z"/>
+      <path id="path2" inkscape:label="plu/ss" d="M5 0 L10 0 L10 5 Z"/>
+    </g>
+  </g>
+</svg>`;
+    const entries = [
+      { svgId: "plu/sg", parentProvince: "plu", coastAbbr: "sg" },
+      { svgId: "plu/ss", parentProvince: "plu", coastAbbr: "ss" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("plu/sg");
+    expect(ids).toContain("plu/ss");
+    expect(ids).toHaveLength(2);
+  });
+
+  it("merges unlabeled Figma-style groups into compound paths", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="suk" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">
+    <g id="suk/sc">
+      <path d="M0 0 L5 0 L5 5 Z"/>
+      <path d="M5 0 L10 0 L10 5 Z"/>
+    </g>
+  </g>
+</svg>`;
+    const entries = [
+      { svgId: "suk/sc", parentProvince: "suk", coastAbbr: "sc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    expect(ncLayer!.children).toHaveLength(1);
+    expect(ncLayer!.children[0].getAttribute("id")).toBe("suk/sc");
+    expect(ncLayer!.children[0].tagName.toLowerCase()).toBe("path");
+  });
+});
+
 describe("buildDsvgOutput – root fill propagation", () => {
   it("adds fill='none' to paths without explicit fill when root has fill='none'", () => {
     const svg = makeSvg(` fill="none"`);

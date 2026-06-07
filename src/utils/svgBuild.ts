@@ -397,6 +397,11 @@ export function buildDsvgOutput(
   const ncLayer = namedCoastsEl ?? makeLayerGroup(doc, "named-coasts");
   ncLayer.setAttribute("id", "named-coasts");
   ncLayer.setAttribute("style", "display:none");
+  // Hoist Inkscape sub-layer groups (those with inkscape:label) into direct
+  // children before any other processing. Groups without inkscape:label (Figma
+  // compound shapes like a province with an island) are left untouched so that
+  // flattenGroupsToCompoundPaths can merge them below.
+  flattenInkscapeSubLayers(ncLayer);
   convertShapesToPaths(doc, ncLayer);
   // Same label promotion for named-coast paths (e.g. "mor/wc").
   relabelByInkscape(ncLayer);
