@@ -123,6 +123,8 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
   const [isDownloading, setIsDownloading] = useState(false);
   const [positionErrors, setPositionErrors] = useState<{ missing: string[]; unknown: string[] } | null>(null);
   const [buildWarnings, setBuildWarnings] = useState<string[]>([]);
+  const [embedFailed, setEmbedFailed] = useState(false);
+  const preEmbedOutputRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!embedFontsEnabled) {
@@ -167,10 +169,23 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
       : undefined;
   }, [svgContent]);
 
+  const triggerDownload = (output: string) => {
+    const baseName = fileName.replace(/\.svg$/i, "");
+    const blob = new Blob([output], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${baseName}.d.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
     setPositionErrors(null);
     setBuildWarnings([]);
+    setEmbedFailed(false);
+    preEmbedOutputRef.current = null;
     try {
       const collectedWarnings: string[] = [];
       let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes, namedCoastEntries, collectedWarnings);
@@ -184,19 +199,22 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
       setBuildWarnings(collectedWarnings);
 
       if (embedFontsEnabled && fontInfo) {
-        output = await embedFonts(output, fontInfo, uploadedFonts);
+        preEmbedOutputRef.current = output;
+        try {
+          output = await embedFonts(output, fontInfo, uploadedFonts);
+        } catch {
+          setEmbedFailed(true);
+          return;
+        }
       }
-      const baseName = fileName.replace(/\.svg$/i, "");
-      const blob = new Blob([output], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${baseName}.d.svg`;
-      a.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(output);
     } finally {
       setIsDownloading(false);
     }
+  };
+
+  const handleDownloadWithoutFonts = () => {
+    if (preEmbedOutputRef.current) triggerDownload(preEmbedOutputRef.current);
   };
 
   // Assigned layers in canonical output order, skipping unassigned ones
@@ -359,6 +377,23 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
             <p className="text-muted-foreground">
               Fix these IDs in your source SVG and re-upload to resolve.
             </p>
+          </div>
+        )}
+
+        {embedFailed && (
+          <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+            <div className="flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Font embed failed. Try again, or{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={handleDownloadWithoutFonts}
+              >
+                download anyway
+              </button>{" "}
+              to download without embedded fonts.
+            </div>
           </div>
         )}
 

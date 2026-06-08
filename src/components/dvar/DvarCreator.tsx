@@ -110,6 +110,8 @@ export function DvarCreator() {
       setPendingDvarFileName(file.name);
       setDvarError(null);
     } catch {
+      setPendingDvar(null);
+      setPendingDvarFileName(null);
       setDvarError("Invalid .dvar file — could not parse JSON.");
     }
   };
@@ -217,36 +219,40 @@ export function DvarCreator() {
       return;
     }
 
-    const content = await file.text();
-    const validationError = validateDsvg(content);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+    try {
+      const content = await file.text();
+      const validationError = validateDsvg(content);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
 
-    setError(null);
-    setFileName(file.name);
-    setSvgContent(content);
-    const parsed = parseDsvg(content);
-    setParsedDsvgState(parsed);
+      setError(null);
+      setFileName(file.name);
+      setSvgContent(content);
+      const parsed = parseDsvg(content);
+      setParsedDsvgState(parsed);
 
-    if (pendingDvar) {
-      const mismatches = computeMismatches(pendingDvar, parsed);
-      if (mismatches.missingProvinces.length > 0 || mismatches.missingCoasts.length > 0) {
-        const initProvinceMap: ReconcileMap = {};
-        for (const id of mismatches.missingProvinces) initProvinceMap[id] = null;
-        const initCoastMap: ReconcileMap = {};
-        for (const id of mismatches.missingCoasts) initCoastMap[id] = null;
-        setReconcileMismatches(mismatches);
-        setProvinceReconcileMap(initProvinceMap);
-        setCoastReconcileMap(initCoastMap);
-        setStep("reconcile");
+      if (pendingDvar) {
+        const mismatches = computeMismatches(pendingDvar, parsed);
+        if (mismatches.missingProvinces.length > 0 || mismatches.missingCoasts.length > 0) {
+          const initProvinceMap: ReconcileMap = {};
+          for (const id of mismatches.missingProvinces) initProvinceMap[id] = null;
+          const initCoastMap: ReconcileMap = {};
+          for (const id of mismatches.missingCoasts) initCoastMap[id] = null;
+          setReconcileMismatches(mismatches);
+          setProvinceReconcileMap(initProvinceMap);
+          setCoastReconcileMap(initCoastMap);
+          setStep("reconcile");
+        } else {
+          applyDvarPreFill(pendingDvar);
+          setStep("basic-info");
+        }
       } else {
-        applyDvarPreFill(pendingDvar);
         setStep("basic-info");
       }
-    } else {
-      setStep("basic-info");
+    } catch {
+      setError("Could not read the file. Please try again.");
     }
   };
 
