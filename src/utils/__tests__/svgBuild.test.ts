@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildDsvgOutput } from "../svgBuild";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 
 // SVG structure used in these tests:
 //   root > container > [bg, provinces, named-coasts, unit-positions, fg]

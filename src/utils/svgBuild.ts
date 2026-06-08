@@ -1,5 +1,5 @@
 import type { SvgTreeNode } from "@/utils/svgTree";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 import { resolveTransforms } from "@/utils/svgTransform";
 
 const INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape";

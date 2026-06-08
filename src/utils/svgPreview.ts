@@ -1,4 +1,4 @@
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 
 function filterGroups(
   el: Element,

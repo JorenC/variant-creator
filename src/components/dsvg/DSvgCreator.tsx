@@ -10,9 +10,9 @@ import { UnitPositionEditor } from "@/components/dsvg/UnitPositionEditor";
 import { DsvgExport } from "@/components/dsvg/DsvgExport";
 import { parseSvgTree, flattenTree, validateAnySvg } from "@/utils/svgTree";
 import type { SvgTreeNode } from "@/utils/svgTree";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 import type { LayerPreviewHandle } from "@/components/dsvg/LayerPreview";
-import type { NamedCoastEntry, NamedCoastEditorHandle } from "@/components/dsvg/NamedCoastEditor";
+import type { NamedCoastEditorHandle } from "@/components/dsvg/NamedCoastEditor";
 import type { UnitPositionEditorHandle } from "@/components/dsvg/UnitPositionEditor";
 
 type Step = "upload" | "assign" | "preview" | "named-coasts" | "unit-positions" | "done";

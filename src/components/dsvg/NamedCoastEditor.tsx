@@ -18,13 +18,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { buildPreviewSvg } from "@/utils/svgPreview";
 import { extractProvinces, extractLayerPaths, detectAmbiguousGroups } from "@/utils/svgProvinces";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 
-export interface NamedCoastEntry {
-  svgId: string;
-  parentProvince: string;
-  coastAbbr: string;
-}
+export type { NamedCoastEntry };
 
 export interface NamedCoastEditorHandle {
   getData: () => NamedCoastEntry[];

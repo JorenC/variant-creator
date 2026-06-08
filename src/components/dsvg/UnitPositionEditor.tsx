@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { buildPreviewSvg } from "@/utils/svgPreview";
 import { extractProvinces } from "@/utils/svgProvinces";
 import { autoDetectUnitProvinces } from "@/utils/svgAutoDetect";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 
 export interface UnitPositionEditorHandle {
   validate: () => Record<string, string> | null;
