@@ -276,6 +276,7 @@ export function DSvgCreator() {
                 svgContent={svgContent}
                 assignments={assignments}
                 provinceAbbrs={provinceAbbrs}
+                namedCoastEntries={namedCoastEntries}
               />
             )}
 

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { buildPreviewSvg } from "@/utils/svgPreview";
 import { extractProvinces } from "@/utils/svgProvinces";
 import { autoDetectUnitProvinces } from "@/utils/svgAutoDetect";
-import type { LayerAssignments } from "@/types/dsvg";
+import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 
 export interface UnitPositionEditorHandle {
   validate: () => Record<string, string> | null;
@@ -22,6 +22,7 @@ interface UnitPositionEditorProps {
   svgContent: string;
   assignments: LayerAssignments;
   provinceAbbrs: Record<string, string>;
+  namedCoastEntries: NamedCoastEntry[];
 }
 
 // Accepts "stp" (province) or "stp/river" (named coast, any length suffix)
@@ -44,7 +45,7 @@ function validateCode(
 export const UnitPositionEditor = forwardRef<
   UnitPositionEditorHandle,
   UnitPositionEditorProps
->(({ svgContent, assignments, provinceAbbrs }, ref) => {
+>(({ svgContent, assignments, provinceAbbrs, namedCoastEntries }, ref) => {
   const filteredSvg = useMemo(
     () => buildPreviewSvg(svgContent, assignments),
     [svgContent, assignments]
@@ -87,8 +88,31 @@ export const UnitPositionEditor = forwardRef<
 
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [summaryErrors, setSummaryErrors] = useState<string[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const mismatchDetails = useMemo(() => {
+    if (!countMismatch) return null;
+    const validCodesSet = new Set<string>([
+      ...Object.values(provinceAbbrs).map(v => v.toLowerCase()),
+      ...namedCoastEntries.map(e =>
+        `${e.parentProvince}/${e.coastAbbr}`.toLowerCase()
+      ),
+    ]);
+    const assignedCodesSet = new Set<string>(
+      elements
+        .map(el => (codes[el.svgId] ?? "").toLowerCase())
+        .filter(c => c.length > 0)
+    );
+    const missingProvinces = [...validCodesSet].filter(
+      c => !assignedCodesSet.has(c)
+    );
+    const extraPositions = elements
+      .map(el => (codes[el.svgId] ?? el.svgId).toLowerCase())
+      .filter(c => !validCodesSet.has(c));
+    return { missingProvinces, extraPositions };
+  }, [countMismatch, provinceAbbrs, namedCoastEntries, elements, codes]);
 
   useEffect(() => {
     const initial: Record<string, string> = {};
@@ -112,26 +136,84 @@ export const UnitPositionEditor = forwardRef<
     () => ({
       validate() {
         if (countMismatch) return null;
-        const invalid = elements.filter(
-          el => !CODE_PATTERN.test(codes[el.svgId] ?? "")
-        );
-        if (invalid.length > 0) {
-          const newErrors: Record<string, string> = {};
-          invalid.forEach(el => {
+
+        const newErrors: Record<string, string> = {};
+
+        // Check 1: format
+        for (const el of elements) {
+          if (!CODE_PATTERN.test(codes[el.svgId] ?? "")) {
             newErrors[el.svgId] = CODE_ERROR;
-          });
+          }
+        }
+
+        // Check 2: duplicates
+        const seen = new Map<string, string[]>();
+        for (const el of elements) {
+          const lower = (codes[el.svgId] ?? "").toLowerCase();
+          if (!seen.has(lower)) seen.set(lower, []);
+          seen.get(lower)!.push(el.svgId);
+        }
+        for (const [code, ids] of seen) {
+          if (ids.length > 1) {
+            for (const id of ids) {
+              newErrors[id] = `Duplicate code "${code}".`;
+            }
+          }
+        }
+
+        // Check 3: existence — each code must match a province abbr or named coast
+        const validCodes = new Set<string>([
+          ...Object.values(provinceAbbrs).map(v => v.toLowerCase()),
+          ...namedCoastEntries.map(e =>
+            `${e.parentProvince}/${e.coastAbbr}`.toLowerCase()
+          ),
+        ]);
+        for (const el of elements) {
+          const lower = (codes[el.svgId] ?? "").toLowerCase();
+          if (CODE_PATTERN.test(lower) && !validCodes.has(lower)) {
+            newErrors[el.svgId] = `"${lower}" does not match any province or named coast.`;
+          }
+        }
+
+        if (Object.keys(newErrors).length > 0) {
           setErrors(prev => ({ ...prev, ...newErrors }));
+          setSummaryErrors([]);
           requestAnimationFrame(() => {
-            const firstInput = inputRefs.current[invalid[0].svgId];
-            firstInput?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            firstInput?.focus();
+            const firstId = elements.find(el => newErrors[el.svgId])?.svgId;
+            if (firstId) {
+              inputRefs.current[firstId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              inputRefs.current[firstId]?.focus();
+            }
           });
           return null;
         }
+
+        // Check 4: coverage — every province and named coast must have a unit position
+        const assignedCodes = new Set(
+          Object.values(codes).map(v => v.toLowerCase())
+        );
+        const missing: string[] = [];
+        for (const abbr of Object.values(provinceAbbrs)) {
+          if (!assignedCodes.has(abbr.toLowerCase())) {
+            missing.push(`Province '${abbr}' has no unit position.`);
+          }
+        }
+        for (const entry of namedCoastEntries) {
+          const code = `${entry.parentProvince}/${entry.coastAbbr}`.toLowerCase();
+          if (!assignedCodes.has(code)) {
+            missing.push(`Named coast '${code}' has no unit position.`);
+          }
+        }
+        if (missing.length > 0) {
+          setSummaryErrors(missing);
+          return null;
+        }
+
+        setSummaryErrors([]);
         return { ...codes };
       },
     }),
-    [codes, elements, countMismatch]
+    [codes, elements, countMismatch, provinceAbbrs, namedCoastEntries]
   );
 
   const handleCodeChange = (svgId: string, value: string) => {
@@ -143,6 +225,7 @@ export const UnitPositionEditor = forwardRef<
         return next;
       });
     }
+    if (summaryErrors.length > 0) setSummaryErrors([]);
   };
 
   const handleFocus = (svgId: string) => setFocusedId(svgId);
@@ -202,17 +285,42 @@ export const UnitPositionEditor = forwardRef<
         </Button>
       </div>
       {countMismatch && (
-        <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>
-            {elements.length} unit position{elements.length !== 1 ? "s" : ""}{" "}
-            found, {expectedCount} expected ({provinceCount}{" "}
-            {provinceCount === 1 ? "province" : "provinces"}
-            {namedCoastCount > 0
-              ? ` + ${namedCoastCount} named ${namedCoastCount === 1 ? "coast" : "coasts"}`
-              : ""}
-            ).
-          </span>
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>
+              {elements.length} unit position{elements.length !== 1 ? "s" : ""}{" "}
+              found, {expectedCount} expected ({provinceCount}{" "}
+              {provinceCount === 1 ? "province" : "provinces"}
+              {namedCoastCount > 0
+                ? ` + ${namedCoastCount} named ${namedCoastCount === 1 ? "coast" : "coasts"}`
+                : ""}
+              ).
+            </span>
+          </div>
+          {mismatchDetails && (
+            <ul className="mt-1 list-disc pl-9 font-mono">
+              {mismatchDetails.missingProvinces.map(p => (
+                <li key={p}>province — {p}</li>
+              ))}
+              {mismatchDetails.extraPositions.map(p => (
+                <li key={p}>unit-position — {p}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {summaryErrors.length > 0 && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Some provinces have no unit position:</span>
+          </div>
+          <ul className="mt-1 list-disc pl-9">
+            {summaryErrors.map(msg => (
+              <li key={msg}>{msg}</li>
+            ))}
+          </ul>
         </div>
       )}
       <div className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto pr-1">
