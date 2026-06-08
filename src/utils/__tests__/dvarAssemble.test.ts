@@ -5,6 +5,7 @@ import {
   buildInitialDominanceRules,
   assembleDvar,
 } from "../dvarAssemble";
+import { DvarSchema } from "../dvarSchema";
 import type { AssembleDvarInput } from "@/types/dvar";
 
 describe("toSlug", () => {
@@ -113,6 +114,63 @@ describe("assembleDvar", () => {
     expect(withOptionals.rules).toBe("Be nice");
     expect(withOptionals.adjudicationModifiers).toEqual(["allow-builds-in-non-home-centers"]);
     expect((withOptionals.dominanceRules as unknown[]).length).toBe(1);
+  });
+
+  it("output passes DvarSchema — regression guard for canonical schema compliance", () => {
+    // A complete input covering all optional fields: named coasts, rules,
+    // dominance rules, adjudication modifiers, timed-resolution victory condition.
+    const input: AssembleDvarInput = {
+      basicInfo: { id: "test-variant", name: "Test Variant", description: "A test.", author: "Tester", startYear: 1901, rules: "Some rules." },
+      nations: [
+        { id: "fra", name: "France", color: "#80DEEA" },
+        { id: "eng", name: "England", color: "#2196F3" },
+      ],
+      provincesData: {
+        provinces: [
+          { id: "par", name: "Paris", type: "land", supplyCenter: true, namedCoasts: [] },
+          { id: "lon", name: "London", type: "coastal", supplyCenter: true, namedCoasts: [] },
+          { id: "nth", name: "North Sea", type: "sea", supplyCenter: false, namedCoasts: [] },
+          { id: "stp", name: "St. Petersburg", type: "land", supplyCenter: true, namedCoasts: [{ id: "stp/nc", name: "St. Petersburg (NC)" }, { id: "stp/sc", name: "St. Petersburg (SC)" }] },
+        ],
+      },
+      homeNationsData: {
+        par: { nation: "fra", startingUnit: "army", startingCoast: null },
+        lon: { nation: "eng", startingUnit: "fleet", startingCoast: null },
+        stp: { nation: "fra", startingUnit: "fleet", startingCoast: "stp/sc" },
+      },
+      adjacenciesData: {
+        par: [{ to: "lon", pass: "army" }],
+        lon: [{ to: "par", pass: "army" }, { to: "nth", pass: "fleet" }],
+        nth: [{ to: "lon", pass: "fleet" }],
+        "stp/nc": [{ to: "nth", pass: "fleet" }],
+        "stp/sc": [{ to: "lon", pass: "fleet" }],
+      },
+      dominanceRulesData: {
+        nth: { enabled: true, provinceOccupier: "fra", conditions: { par: "fra" } },
+      },
+      phaseProgressionData: [
+        { season: "Spring", type: "Movement", yearDelta: 0 },
+        { season: "Spring", type: "Retreat", yearDelta: 0 },
+        { season: "Fall", type: "Movement", yearDelta: 0 },
+        { season: "Fall", type: "Retreat", yearDelta: 0 },
+        { season: "Fall", type: "Adjustment", yearDelta: 1 },
+      ],
+      victoryConditionsData: [
+        { type: "supply-center-majority", supplyCenters: 18 },
+        { type: "timed-resolution", year: 1920, resolution: "most-supply-centers" },
+      ],
+      adjudicationModifiersData: ["allow-builds-in-non-home-centers"],
+    };
+
+    const output = assembleDvar(input);
+    const result = DvarSchema.safeParse(output);
+    if (!result.success) {
+      // Print the full error for easy debugging when this regression fires
+      throw new Error(
+        "assembleDvar output failed schema validation:\n" +
+        result.error.issues.map(i => `  ${i.path.join(".")}: ${i.message}`).join("\n")
+      );
+    }
   });
 
   it("excludes neutral / empty owners from units and supply centers", () => {
