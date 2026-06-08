@@ -4,19 +4,47 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const PRESET_COLORS = [
-  { name: "England Blue", value: "#2196F3" },
-  { name: "France Cyan", value: "#00BCD4" },
-  { name: "Germany Gray", value: "#607D8B" },
-  { name: "Austria Red", value: "#F44336" },
-  { name: "Italy Green", value: "#4CAF50" },
-  { name: "Russia Purple", value: "#9C27B0" },
-  { name: "Turkey Yellow", value: "#FFC107" },
-  { name: "Dark Blue", value: "#1565C0" },
-  { name: "Teal", value: "#009688" },
-  { name: "Orange", value: "#FF5722" },
-  { name: "Pink", value: "#E91E63" },
-  { name: "Brown", value: "#795548" },
+export const DIPLOMACY_PALETTE = [
+  { name: "England",    value: "#1976D2" },
+  { name: "Germany",    value: "#546E7A" },
+  { name: "Italy",      value: "#388E3C" },
+  { name: "Austria",    value: "#D32F2F" },
+  { name: "Turkey",     value: "#FFB300" },
+  { name: "Russia",     value: "#E0E0E0" },
+  { name: "France",     value: "#00BCD4" },
+  { name: "Purple",     value: "#9C27B0" },
+  { name: "Orange",     value: "#FF5722" },
+  { name: "Teal",       value: "#009688" },
+  { name: "Magenta",    value: "#E91E63" },
+  { name: "Lime",       value: "#CDDC39" },
+  { name: "Brown",      value: "#795548" },
+  { name: "Indigo",     value: "#3F51B5" },
+  { name: "Cyan",       value: "#80DEEA" },
+  { name: "Deep Red",   value: "#8E0000" },
+  { name: "Navy",       value: "#1A237E" },
+  { name: "Forest",     value: "#1B5E20" },
+  { name: "Mustard",    value: "#BF360C" },
+  { name: "Lavender",   value: "#CE93D8" },
+  { name: "Peach",      value: "#FFAB91" },
+  { name: "Seafoam",    value: "#B2DFDB" },
+  { name: "Pink",       value: "#F48FB1" },
+  { name: "Olive",      value: "#9E9D24" },
+  { name: "Tan",        value: "#A1887F" },
+  { name: "Royal Blue", value: "#536DFE" },
+  { name: "Mint",       value: "#C8E6C9" },
+  { name: "Salmon",     value: "#FF8A65" },
+  { name: "Plum",       value: "#7B1FA2" },
+  { name: "Amber",      value: "#FFC107" },
+  { name: "Slate",      value: "#B0BEC5" },
+  { name: "Coral",      value: "#FF7043" },
+  { name: "Turquoise",  value: "#4DB6AC" },
+  { name: "Rose",       value: "#F06292" },
+  { name: "Chartreuse", value: "#D4E157" },
+  { name: "Chocolate",  value: "#5D4037" },
+  { name: "Cobalt",     value: "#304FFE" },
+  { name: "Emerald",    value: "#00C853" },
+  { name: "Violet",     value: "#673AB7" },
+  { name: "Gold",       value: "#FFD700" },
 ];
 
 interface NationColorPickerProps {
@@ -71,9 +99,9 @@ export function NationColorPicker({
       />
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-lg border bg-popover p-3 shadow-lg">
-          <div className="mb-3 grid grid-cols-6 gap-2">
-            {PRESET_COLORS.map((preset) => (
+        <div className="absolute left-0 top-full z-50 mt-2 w-80 rounded-lg border bg-popover p-3 shadow-lg">
+          <div className="mb-3 grid grid-cols-8 gap-1">
+            {DIPLOMACY_PALETTE.map((preset) => (
               <button
                 key={preset.value}
                 type="button"

@@ -253,6 +253,81 @@ describe("buildDsvgOutput – named coast Inkscape sub-layer flattening", () => 
   });
 });
 
+describe("buildDsvgOutput – canonical layer structure (dsvgParser contract)", () => {
+  // These tests enforce that every layer required by diplicity-react's parseDsvg
+  // is a *direct child* of the root <svg> element. parseDsvg uses findLayer()
+  // which only looks at root.children — nested layers are invisible to it.
+  function rootLayers(output: string): Array<{ id: string; style: string | null }> {
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    return Array.from(doc.documentElement.children)
+      .filter(el => el.tagName.toLowerCase() === "g")
+      .map(el => ({ id: el.getAttribute("id") ?? "", style: el.getAttribute("style") }));
+  }
+
+  it("places provinces as a direct root child with display:none", () => {
+    const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
+    const prov = layers.find(l => l.id === "provinces");
+    expect(prov).toBeDefined();
+    expect(prov?.style).toBe("display:none");
+  });
+
+  it("places unit-positions as a direct root child with display:none", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="par" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="ups"><circle id="par" cx="5" cy="5" r="3"/></g>
+</svg>`;
+    const assignments: LayerAssignments = {
+      ...BASE_ASSIGNMENTS,
+      unitPositions: "root-1",
+    };
+    const layers = rootLayers(buildDsvgOutput(svg, assignments));
+    const up = layers.find(l => l.id === "unit-positions");
+    expect(up).toBeDefined();
+    expect(up?.style).toBe("display:none");
+  });
+
+  it("places supply-centers as a direct root child with display:none — NOT nested inside foreground", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="par" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="scs"><circle id="par" cx="5" cy="5" r="3"/></g>
+</svg>`;
+    const assignments: LayerAssignments = {
+      ...BASE_ASSIGNMENTS,
+      supplyCenters: "root-1",
+    };
+    const output = buildDsvgOutput(svg, assignments);
+    const layers = rootLayers(output);
+
+    // Must be a direct child of <svg>
+    const sc = layers.find(l => l.id === "supply-centers");
+    expect(sc).toBeDefined();
+    expect(sc?.style).toBe("display:none");
+
+    // Must NOT be nested inside foreground
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const fg = Array.from(doc.documentElement.children).find(
+      el => el.tagName.toLowerCase() === "g" && el.getAttribute("id") === "foreground"
+    );
+    expect(fg?.querySelector("#supply-centers")).toBeNull();
+  });
+
+  it("emits a supply-centers layer even when none is assigned (empty placeholder)", () => {
+    const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
+    expect(layers.some(l => l.id === "supply-centers")).toBe(true);
+  });
+
+  it("canonical layer order: background → provinces → named-coasts → unit-positions → supply-centers → province-names → borders → foreground", () => {
+    const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
+    const ids = layers.map(l => l.id);
+    const order = ["background", "provinces", "named-coasts", "unit-positions", "supply-centers", "province-names", "borders", "foreground"];
+    const indices = order.map(id => ids.indexOf(id));
+    for (const [i, id] of order.entries()) {
+      expect(ids).toContain(id);
+      if (i > 0) expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
+  });
+});
+
 describe("buildDsvgOutput – root fill propagation", () => {
   it("adds fill='none' to paths without explicit fill when root has fill='none'", () => {
     const svg = makeSvg(` fill="none"`);

@@ -19,6 +19,41 @@ interface DsvgExportProps {
   fileName: string;
 }
 
+// Checks that required layers are direct children of the root <svg> element,
+// matching what the diplicity-react dsvgParser.findLayer() expects.
+function validateDsvgStructure(svgContent: string): string[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const errors: string[] = [];
+
+  if (doc.querySelector("parsererror")) {
+    return ["Output SVG is not valid XML."];
+  }
+
+  const root = doc.documentElement;
+  if (root.tagName.toLowerCase() !== "svg") {
+    return ["Output root element is not <svg>."];
+  }
+  if (!root.getAttribute("viewBox")) {
+    errors.push("Output SVG is missing a viewBox attribute.");
+  }
+
+  const rootLayerIds = new Set(
+    Array.from(root.children)
+      .filter(el => el.tagName.toLowerCase() === "g")
+      .map(el => el.getAttribute("id"))
+      .filter((id): id is string => id !== null)
+  );
+
+  for (const required of ["provinces", "unit-positions", "supply-centers"]) {
+    if (!rootLayerIds.has(required)) {
+      errors.push(`Layer <g id="${required}"> is missing as a direct child of <svg>.`);
+    }
+  }
+
+  return errors;
+}
+
 function validatePositionConsistency(svgContent: string): { missing: string[]; unknown: string[] } {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -121,6 +156,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
   const [fontInfo, setFontInfo] = useState<SvgFontInfo | null>(null);
   const [uploadedFonts, setUploadedFonts] = useState<Map<string, ArrayBuffer>>(new Map());
   const [isDownloading, setIsDownloading] = useState(false);
+  const [structureErrors, setStructureErrors] = useState<string[]>([]);
   const [positionErrors, setPositionErrors] = useState<{ missing: string[]; unknown: string[] } | null>(null);
   const [buildWarnings, setBuildWarnings] = useState<string[]>([]);
   const [embedFailed, setEmbedFailed] = useState(false);
@@ -182,6 +218,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
 
   const handleDownload = async () => {
     setIsDownloading(true);
+    setStructureErrors([]);
     setPositionErrors(null);
     setBuildWarnings([]);
     setEmbedFailed(false);
@@ -189,6 +226,13 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
     try {
       const collectedWarnings: string[] = [];
       let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes, namedCoastEntries, collectedWarnings);
+
+      const structErrors = validateDsvgStructure(output);
+      if (structErrors.length > 0) {
+        setStructureErrors(structErrors);
+        setBuildWarnings(collectedWarnings);
+        return;
+      }
 
       const validation = validatePositionConsistency(output);
       if (validation.missing.length > 0 || validation.unknown.length > 0) {
@@ -349,6 +393,16 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
             {buildWarnings.map((w, i) => (
               <p key={i}>{w}</p>
             ))}
+          </div>
+        )}
+
+        {structureErrors.length > 0 && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              dSVG structure invalid — the server will reject this file
+            </div>
+            {structureErrors.map((e, i) => <p key={i}>{e}</p>)}
           </div>
         )}
 

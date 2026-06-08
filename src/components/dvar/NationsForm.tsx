@@ -4,25 +4,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NationColorPicker } from "@/components/common/NationColorPicker";
+import { NationColorPicker, DIPLOMACY_PALETTE } from "@/components/common/NationColorPicker";
 import { toSlug } from "@/utils/dvarAssemble";
 import { nationsSchema, type NationsValues } from "./schemas";
 
-/** Default nation colour palette, cycled through as nations are added. */
-const DEFAULT_COLORS = [
-  "#2196F3",
-  "#00BCD4",
-  "#607D8B",
-  "#F44336",
-  "#4CAF50",
-  "#9C27B0",
-  "#FFC107",
-  "#FF5722",
-  "#1565C0",
-  "#009688",
-  "#E91E63",
-  "#795548",
-];
+const DEFAULT_COLORS = DIPLOMACY_PALETTE.map(p => p.value);
 
 export interface NationsFormHandle {
   getValues: () => NationsValues["nations"];

@@ -417,7 +417,7 @@ export function buildDsvgOutput(
 
   // 6. Build clean output document in canonical layer order:
   //    background → provinces → named-coasts → unit-positions →
-  //    province-names → borders → foreground (supply-centers nested inside)
+  //    supply-centers → province-names → borders → foreground
   while (root.firstChild) root.removeChild(root.firstChild);
   headerNodes.forEach(n => root.appendChild(n));
 
@@ -523,6 +523,11 @@ export function buildDsvgOutput(
   }
   root.appendChild(upLayer);
 
+  const scLayer = supplyCentersEl ?? makeLayerGroup(doc, "supply-centers");
+  scLayer.setAttribute("id", "supply-centers");
+  scLayer.setAttribute("style", "display:none");
+  root.appendChild(scLayer);
+
   const pnLayer = provinceNamesEl ?? makeLayerGroup(doc, "province-names");
   pnLayer.setAttribute("id", "province-names");
   pnLayer.setAttribute("style", "display:inline");
@@ -534,11 +539,6 @@ export function buildDsvgOutput(
 
   const fg = makeLayerGroup(doc, "foreground");
   fg.setAttribute("style", "display:inline");
-  if (supplyCentersEl) {
-    supplyCentersEl.setAttribute("id", "supply-centers");
-    supplyCentersEl.setAttribute("style", "display:inline");
-    fg.appendChild(supplyCentersEl);
-  }
   foregroundNodes.forEach(el => fg.appendChild(el));
   root.appendChild(fg);
 
