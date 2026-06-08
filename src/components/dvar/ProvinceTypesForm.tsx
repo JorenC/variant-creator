@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef, useState, useMemo } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Wand2 } from "lucide-react";
+import { AlertCircle, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,11 +50,14 @@ export const ProvinceTypesForm = forwardRef<ProvinceTypesFormHandle, ProvinceTyp
     return !!doc.getElementById("foreground")?.querySelector("#supply-centers");
   }, [svgContent]);
 
+  const [scSkipped, setScSkipped] = useState<string[]>([]);
+
   const handleAutoDetectSCs = () => {
-    const detected = detectSCProvinces(svgContent);
+    const { detected, skipped } = detectSCProvinces(svgContent);
     defaultValues.provinces.forEach((province, i) => {
       setValue(`provinces.${i}.supplyCenter`, detected.has(province.id));
     });
+    setScSkipped(skipped);
   };
 
   const typeColorMap = useMemo(() => {
@@ -101,6 +104,17 @@ export const ProvinceTypesForm = forwardRef<ProvinceTypesFormHandle, ProvinceTyp
               {watchedProvinces.filter(p => p.supplyCenter).length} supply center{watchedProvinces.filter(p => p.supplyCenter).length !== 1 ? "s" : ""} selected
             </span>
           </div>
+          {scSkipped.length > 0 && (
+            <div className="mb-1 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              <div className="flex gap-1.5">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Auto-detection skipped {scSkipped.length} province{scSkipped.length !== 1 ? "s" : ""} due to geometry errors — check these manually:{" "}
+                  <span className="font-mono">{scSkipped.join(", ")}</span>
+                </span>
+              </div>
+            </div>
+          )}
           <div className="max-h-[70vh] space-y-0.5 overflow-y-auto pr-2">
             {defaultValues.provinces.map((province, i) => (
               <div

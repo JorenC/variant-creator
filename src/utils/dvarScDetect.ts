@@ -1,10 +1,16 @@
+export interface DetectSCProvincesResult {
+  detected: Set<string>;
+  skipped: string[];
+}
+
 /**
  * Detects which provinces contain a supply-center marker, by rendering the dSVG
  * off-screen and point-testing each supply-center centre against province fills.
  * Browser-only (uses `document` + SVG geometry APIs).
  */
-export function detectSCProvinces(svgContent: string): Set<string> {
-  const result = new Set<string>();
+export function detectSCProvinces(svgContent: string): DetectSCProvincesResult {
+  const detected = new Set<string>();
+  const skipped: string[] = [];
 
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;left:-99999px;top:-99999px;visibility:hidden";
@@ -13,11 +19,11 @@ export function detectSCProvinces(svgContent: string): Set<string> {
 
   try {
     const liveSvg = container.querySelector("svg") as SVGSVGElement | null;
-    if (!liveSvg) return result;
+    if (!liveSvg) return { detected, skipped };
 
     const liveSCs = liveSvg.getElementById("foreground")?.querySelector("#supply-centers") ?? null;
     const liveProvinces = liveSvg.getElementById("provinces");
-    if (!liveSCs || !liveProvinces) return result;
+    if (!liveSCs || !liveProvinces) return { detected, skipped };
 
     liveProvinces.removeAttribute("style");
 
@@ -43,9 +49,9 @@ export function detectSCProvinces(svgContent: string): Set<string> {
       for (const provEl of Array.from(liveProvinces.children)) {
         if (provEl instanceof SVGGeometryElement && provEl.id) {
           try {
-            if (provEl.isPointInFill(pt)) result.add(provEl.id);
+            if (provEl.isPointInFill(pt)) detected.add(provEl.id);
           } catch {
-            // ignore geometry errors on complex paths
+            if (!skipped.includes(provEl.id)) skipped.push(provEl.id);
           }
         }
       }
@@ -54,5 +60,5 @@ export function detectSCProvinces(svgContent: string): Set<string> {
     document.body.removeChild(container);
   }
 
-  return result;
+  return { detected, skipped };
 }
