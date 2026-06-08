@@ -1,28 +1,11 @@
-import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from "react-router-dom";
+import { createBrowserRouter, Outlet, ScrollRestoration } from "react-router-dom";
 import { HomePage } from "@/components/HomePage";
 import { PreparingMapPage } from "@/components/PreparingMapPage";
 import { VectorizeWithAIPage } from "@/components/VectorizeWithAIPage";
 import { StyleMapPage } from "@/components/StyleMapPage";
-import { LandingPage } from "@/components/LandingPage";
 import { DSvgCreator } from "@/components/dsvg/DSvgCreator";
 import { DvarCreator } from "@/components/dvar/DvarCreator";
 import { UploadDiplicityPage } from "@/components/UploadDiplicityPage";
-import { WizardLayout } from "@/components/wizard/WizardLayout";
-import { PhaseSetup } from "@/components/wizard/PhaseSetup";
-import { PhaseProvinces } from "@/components/wizard/PhaseProvinces";
-import { PhaseTextAssoc } from "@/components/wizard/PhaseTextAssoc";
-import { PhaseAdjacencies } from "@/components/wizard/PhaseAdjacencies";
-import { PhaseVisualEditor } from "@/components/wizard/PhaseVisualEditor";
-import { PhaseExport } from "@/components/wizard/PhaseExport";
-
-const WIZARD_PHASES = [
-  { path: "0", title: "Variant Setup", component: PhaseSetup },
-  { path: "1", title: "Text Association", component: PhaseTextAssoc },
-  { path: "2", title: "Province Details", component: PhaseProvinces },
-  { path: "3", title: "Adjacencies", component: PhaseAdjacencies },
-  { path: "4", title: "Visual Editor", component: PhaseVisualEditor },
-  { path: "5", title: "Review & Export", component: PhaseExport },
-];
 
 function RootLayout() {
   return (
@@ -30,14 +13,6 @@ function RootLayout() {
       <ScrollRestoration />
       <Outlet />
     </>
-  );
-}
-
-function WizardOutlet() {
-  return (
-    <WizardLayout>
-      <Outlet />
-    </WizardLayout>
   );
 }
 
@@ -62,10 +37,6 @@ export const router = createBrowserRouter([
         element: <StyleMapPage />,
       },
       {
-        path: "/variant-creator",
-        element: <LandingPage />,
-      },
-      {
         path: "/dsvg-creator",
         element: <DSvgCreator />,
       },
@@ -77,22 +48,6 @@ export const router = createBrowserRouter([
         path: "/upload-diplicity",
         element: <UploadDiplicityPage />,
       },
-      {
-        path: "/phase",
-        element: <WizardOutlet />,
-        children: [
-          {
-            index: true,
-            element: <Navigate to="0" replace />,
-          },
-          ...WIZARD_PHASES.map(({ path, component: Component }) => ({
-            path,
-            element: <Component />,
-          })),
-        ],
-      },
     ],
   },
 ]);
-
-export { WIZARD_PHASES };

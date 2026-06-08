@@ -18,21 +18,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The **Variant Creator** is a standalone, client-side React web application that enables non-technical users to create custom Diplomacy game variants without programming knowledge.
+The **Variant Creator** is a standalone, client-side React web application that helps
+non-technical users author custom Diplomacy game variants for the Diplicity platform.
 
 - **Fully client-side**: No backend dependencies; all processing happens in the browser
 - **Deployable on Netlify**: Single-page app with SPA redirect
-- **Wizard-based UI**: Guides users through phases to create a complete variant definition
-- **Input**: SVG maps created in Inkscape
-- **Output**: A self-contained JSON file (`VariantDefinition`)
+- **Input**: an SVG map (typically drawn in Inkscape, or AI-vectorized from a PNG)
+- **Output**: **two separate files** that Diplicity ingests —
+  - a **`.d.svg`** ("dSVG"): the map SVG with canonical layer/object naming conventions
+  - a **`.dvar`** ("dVAR"): the variant metadata (nations, adjacencies, supply centers,
+    phase progression, victory conditions, rule modifiers)
+
+There is **no single `VariantDefinition` JSON output** — that was the old design and has
+been removed.
 
 **Tech Stack:**
 - React 19 + TypeScript 5.6
 - Vite (build tool, port 5174)
 - Tailwind CSS v4 + shadcn/ui (new-york style, neutral base color)
-- React Hook Form + Zod (form validation)
-- Paper.js (headless SVG geometry/adjacency detection)
-- React Router (phase-based navigation)
+- React Hook Form + Zod (form validation — see the note under Forms)
+- Paper.js (headless SVG geometry: centroids, path intersection / point-in-polygon)
+- React Router (`createBrowserRouter`, one flat route per page)
 - Vitest + Testing Library (tests)
 - Netlify (deployment)
 
@@ -67,20 +73,51 @@ npm run test     # Vitest
 
 ## Architecture Overview
 
-- **State Management**: `useVariant` hook backed by `localStorage` - no Redux, no React Query
-- **Routing**: React Router with phase-based URLs (`/phase/0`, `/phase/1`, etc.)
-- **UI Components**: shadcn/ui with Tailwind CSS v4
-- **Testing**: Vitest + Testing Library
+The app is **two independent tools plus a set of instructional guide pages**, not one
+monolithic wizard:
+
+- **dSVG Creator** (`src/components/dsvg/`): takes a source SVG and walks the user through
+  assigning layers to canonical roles → naming province abbreviations → named coasts →
+  unit positions → export. Output: a `.d.svg` file.
+- **dVAR Creator** (`src/components/dvar/`): takes a required dSVG (and an optional
+  existing `.dvar` to edit) and walks through nations, province names/types, home nations,
+  adjacencies, dominance rules, phase progression, victory conditions, and rule modifiers.
+  Output: a `.dvar` file.
+- **Guide pages**: `HomePage`, `PreparingMapPage`, `VectorizeWithAIPage`, `StyleMapPage`,
+  `UploadDiplicityPage` (instructional content + navigation).
+
+Cross-cutting concerns:
+
+- **State Management**: plain local component state (`useState` + refs) per wizard. There
+  is **no global store, no `localStorage`, no `useVariant` hook, no Redux, no React Query.**
+- **Routing**: `createBrowserRouter` in [src/Router.tsx](src/Router.tsx) with one flat
+  route per page (`/`, `/dsvg-creator`, `/dvar-creator`, `/preparing-your-map`,
+  `/vectorize-with-ai`, `/style-map`, `/upload-diplicity`). No `/phase/N` routes.
+- **UI Components**: shadcn/ui with Tailwind CSS v4.
+- **Testing**: Vitest + Testing Library (pure-logic utils in `src/utils/__tests__/`).
+
+## Module Map
+
+| Path | Responsibility |
+|---|---|
+| `src/types/` | Shared domain types (`geometry.ts`, `dsvg.ts`, `dvar.ts`). Logic/components import types from here — never the reverse. |
+| `src/utils/` | **Pure logic, no React.** SVG parse/transform/build/preview, Paper.js geometry, dVAR assemble/reconcile. Unit-tested. |
+| `src/hooks/` | Reusable React hooks (e.g. `useSvgObjectUrl` for blob preview URLs). |
+| `src/components/dsvg/` | dSVG Creator orchestrator + step components. |
+| `src/components/dvar/` | dVAR Creator orchestrator + per-step form components + `steps.ts`. |
+| `src/components/common/` | App-wide shared components (`AppHeader`, `NationColorPicker`). |
+| `src/components/ui/` | shadcn/ui primitives. |
 
 ## Component Patterns
 
 ### File Organization
 
-Keep it flat:
-- Wizard phase components in `src/components/wizard/`
-- Map rendering components in `src/components/map/`
-- Shared UI primitives in `src/components/ui/` (shadcn/ui)
-- Common shared components in `src/components/common/`
+Keep it flat, one clear job per file:
+- Pure logic lives in `src/utils/` (no React imports); shared types in `src/types/`.
+- dSVG step components in `src/components/dsvg/`; dVAR step components in
+  `src/components/dvar/` (one component per file).
+- Shared UI primitives in `src/components/ui/` (shadcn/ui); common shared components in
+  `src/components/common/`.
 
 ### Inline Over Extract
 
@@ -110,7 +147,16 @@ Trust component defaults - shadcn/ui components have sensible defaults; only ove
 
 ## Forms
 
-Use React Hook Form with Zod for all forms.
+Prefer React Hook Form with Zod for new forms.
+
+**Known existing inconsistency (intentional, do not "fix" blindly):** within the dVAR
+Creator the earlier step forms (`BasicInfoForm`, `NationsForm`, `ProvinceNamesForm`,
+`ProvinceTypesForm`) use React Hook Form + Zod, while the later, more interactive step
+forms (`HomeNationsForm`, `AdjacenciesForm`, `DominanceRulesForm`, `PhaseProgressionForm`,
+`VictoryConditionsForm`, `AdjudicationModifiersForm`) manage state with plain `useState`
+because their UIs (map-driven selection, drag-to-reorder) don't map cleanly onto RHF.
+Both patterns expose the same imperative `getValues()` handle to the orchestrator via
+`forwardRef` + `useImperativeHandle`.
 
 ---
 
@@ -123,4 +169,6 @@ npm run test -- --run     # Run once (CI mode)
 npm run test <filename>   # Run specific test file (preferred)
 ```
 
-Test files live in `src/__tests__/` or alongside source files as `*.test.ts(x)`.
+Test files live alongside the code they cover, in a sibling `__tests__/` directory
+(e.g. `src/utils/__tests__/svgBuild.test.ts`). The current suite covers the pure-logic
+utilities; UI components are validated by the end-to-end manual smoke test.

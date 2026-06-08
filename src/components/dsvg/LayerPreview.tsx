@@ -9,7 +9,7 @@ import {
 import { buildPreviewSvg } from "@/utils/svgPreview";
 import { extractProvinces } from "@/utils/svgProvinces";
 import { ProvinceIdList } from "@/components/dsvg/ProvinceIdList";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 
 export interface LayerPreviewHandle {
   validate: () => Record<string, string> | null;

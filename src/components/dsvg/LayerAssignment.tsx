@@ -9,15 +9,9 @@ import {
 import { SvgLayerTree } from "@/components/dsvg/SvgLayerTree";
 import { flattenTree } from "@/utils/svgTree";
 import type { SvgTreeNode } from "@/utils/svgTree";
+import type { LayerAssignments } from "@/types/dsvg";
 
-export interface LayerAssignments {
-  provinces: string | null;
-  namedCoasts: string | null;
-  unitPositions: string | null;
-  provinceNames: string | null;
-  borders: string | null;
-  supplyCenters: string | null;
-}
+export type { LayerAssignments };
 
 const LAYER_FIELDS: {
   key: keyof LayerAssignments;

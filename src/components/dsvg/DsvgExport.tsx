@@ -8,8 +8,7 @@ import { buildDsvgOutput, buildVisibilityPreviewSvg } from "@/utils/svgBuild";
 import { analyzeSvgFonts, embedFonts } from "@/utils/fontEmbed";
 import type { SvgFontInfo } from "@/utils/fontEmbed";
 import type { SvgTreeNode } from "@/utils/svgTree";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
-import type { NamedCoastEntry } from "@/components/dsvg/NamedCoastEditor";
+import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 
 interface DsvgExportProps {
   svgContent: string;
