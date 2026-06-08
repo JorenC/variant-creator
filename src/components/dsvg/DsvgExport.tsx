@@ -20,6 +20,34 @@ interface DsvgExportProps {
   fileName: string;
 }
 
+function validatePositionConsistency(svgContent: string): { missing: string[]; unknown: string[] } {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+
+  const shapeIds = new Set<string>();
+  for (const layer of [doc.getElementById("provinces"), doc.getElementById("named-coasts")]) {
+    if (!layer) continue;
+    for (const el of Array.from(layer.querySelectorAll("path"))) {
+      const id = el.getAttribute("id");
+      if (id) shapeIds.add(id);
+    }
+  }
+
+  const circleIds = new Set<string>();
+  const upLayer = doc.getElementById("unit-positions");
+  if (upLayer) {
+    for (const el of Array.from(upLayer.querySelectorAll("circle"))) {
+      const id = el.getAttribute("id");
+      if (id) circleIds.add(id);
+    }
+  }
+
+  return {
+    missing: [...shapeIds].filter(id => !circleIds.has(id)).sort(),
+    unknown: [...circleIds].filter(id => !shapeIds.has(id)).sort(),
+  };
+}
+
 export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCoastEntries, tree, fileName }: DsvgExportProps) {
   const navigate = useNavigate();
   const displayNodes = useMemo(
@@ -94,6 +122,8 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
   const [fontInfo, setFontInfo] = useState<SvgFontInfo | null>(null);
   const [uploadedFonts, setUploadedFonts] = useState<Map<string, ArrayBuffer>>(new Map());
   const [isDownloading, setIsDownloading] = useState(false);
+  const [positionErrors, setPositionErrors] = useState<{ missing: string[]; unknown: string[] } | null>(null);
+  const [buildWarnings, setBuildWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     if (!embedFontsEnabled) {
@@ -140,8 +170,20 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
 
   const handleDownload = async () => {
     setIsDownloading(true);
+    setPositionErrors(null);
+    setBuildWarnings([]);
     try {
-      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes, namedCoastEntries);
+      const collectedWarnings: string[] = [];
+      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes, namedCoastEntries, collectedWarnings);
+
+      const validation = validatePositionConsistency(output);
+      if (validation.missing.length > 0 || validation.unknown.length > 0) {
+        setPositionErrors(validation);
+        setBuildWarnings(collectedWarnings);
+        return;
+      }
+      setBuildWarnings(collectedWarnings);
+
       if (embedFontsEnabled && fontInfo) {
         output = await embedFonts(output, fontInfo, uploadedFonts);
       }
@@ -280,6 +322,46 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
             </div>
           )}
         </div>
+
+        {buildWarnings.length > 0 && (
+          <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-800 dark:text-yellow-200 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Group detection warnings — review if export looks wrong
+            </div>
+            {buildWarnings.map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        )}
+
+        {positionErrors && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Unit-position ID mismatch — the server will reject this file
+            </div>
+            {positionErrors.missing.length > 0 && (
+              <p>
+                <span className="font-semibold">Provinces with no position circle:</span>{" "}
+                {positionErrors.missing.map(id => (
+                  <span key={id} className="font-mono mx-0.5">{id}</span>
+                ))}
+              </p>
+            )}
+            {positionErrors.unknown.length > 0 && (
+              <p>
+                <span className="font-semibold">Position circles with no matching province:</span>{" "}
+                {positionErrors.unknown.map(id => (
+                  <span key={id} className="font-mono mx-0.5">{id}</span>
+                ))}
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              Fix these IDs in your source SVG and re-upload to resolve.
+            </p>
+          </div>
+        )}
 
         <Button onClick={handleDownload} disabled={isDownloading || fontCheckLoading || fontCheckError}>
           {isDownloading ? (
