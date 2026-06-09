@@ -175,19 +175,6 @@ export const UnitPositionEditor = forwardRef<
           }
         }
 
-        if (Object.keys(newErrors).length > 0) {
-          setErrors(prev => ({ ...prev, ...newErrors }));
-          setSummaryErrors([]);
-          requestAnimationFrame(() => {
-            const firstId = elements.find(el => newErrors[el.svgId])?.svgId;
-            if (firstId) {
-              inputRefs.current[firstId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-              inputRefs.current[firstId]?.focus();
-            }
-          });
-          return null;
-        }
-
         // Check 4: coverage — every province and named coast must have a unit position
         const assignedCodes = new Set(
           Object.values(codes).map(v => v.toLowerCase())
@@ -204,8 +191,17 @@ export const UnitPositionEditor = forwardRef<
             missing.push(`Named coast '${code}' has no unit position.`);
           }
         }
-        if (missing.length > 0) {
+
+        if (Object.keys(newErrors).length > 0 || missing.length > 0) {
+          setErrors(prev => ({ ...prev, ...newErrors }));
           setSummaryErrors(missing);
+          requestAnimationFrame(() => {
+            const firstId = elements.find(el => newErrors[el.svgId])?.svgId;
+            if (firstId) {
+              inputRefs.current[firstId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              inputRefs.current[firstId]?.focus();
+            }
+          });
           return null;
         }
 

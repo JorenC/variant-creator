@@ -286,40 +286,43 @@ describe("buildDsvgOutput – canonical layer structure (dsvgParser contract)", 
     expect(up?.style).toBe("display:none");
   });
 
-  it("places supply-centers as a direct root child with display:none — NOT nested inside foreground", () => {
+  it("places supply-centers inside foreground as the top-most layer", () => {
+    // SC and an extra unassigned layer are siblings of provinces (all inside root-0 container).
+    // An extra unassigned layer after SC ensures SC still ends up last in foreground.
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <g id="provs"><path id="par" d="M0 0 L10 0 L10 10 Z"/></g>
-  <g id="scs"><circle id="par" cx="5" cy="5" r="3"/></g>
+  <g id="container">
+    <g id="bg"><rect width="100" height="100"/></g>
+    <g id="provs"><path id="par" d="M0 0 L10 0 L10 10 Z"/></g>
+    <g id="scs"><circle id="sc1" cx="5" cy="5" r="3"/></g>
+    <g id="other-fg"><path id="other" d="M50 50 L60 60"/></g>
+  </g>
 </svg>`;
     const assignments: LayerAssignments = {
       ...BASE_ASSIGNMENTS,
-      supplyCenters: "root-1",
+      supplyCenters: "root-0-2",
     };
     const output = buildDsvgOutput(svg, assignments);
     const layers = rootLayers(output);
 
-    // Must be a direct child of <svg>
-    const sc = layers.find(l => l.id === "supply-centers");
-    expect(sc).toBeDefined();
-    expect(sc?.style).toBe("display:none");
+    // Must NOT be a direct root child
+    expect(layers.find(l => l.id === "supply-centers")).toBeUndefined();
 
-    // Must NOT be nested inside foreground
+    // SC content must appear inside foreground
     const doc = new DOMParser().parseFromString(output, "image/svg+xml");
     const fg = Array.from(doc.documentElement.children).find(
       el => el.tagName.toLowerCase() === "g" && el.getAttribute("id") === "foreground"
     );
-    expect(fg?.querySelector("#supply-centers")).toBeNull();
+    expect(fg?.querySelector("#sc1")).toBeDefined();
+
+    // SC group must be the last child of foreground (rendered on top)
+    const fgChildren = fg ? Array.from(fg.children) : [];
+    expect(fgChildren[fgChildren.length - 1]?.getAttribute("id")).toBe("scs");
   });
 
-  it("emits a supply-centers layer even when none is assigned (empty placeholder)", () => {
-    const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
-    expect(layers.some(l => l.id === "supply-centers")).toBe(true);
-  });
-
-  it("canonical layer order: background → provinces → named-coasts → unit-positions → supply-centers → province-names → borders → foreground", () => {
+  it("canonical layer order: background → provinces → named-coasts → unit-positions → province-names → borders → foreground", () => {
     const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
     const ids = layers.map(l => l.id);
-    const order = ["background", "provinces", "named-coasts", "unit-positions", "supply-centers", "province-names", "borders", "foreground"];
+    const order = ["background", "provinces", "named-coasts", "unit-positions", "province-names", "borders", "foreground"];
     const indices = order.map(id => ids.indexOf(id));
     for (const [i, id] of order.entries()) {
       expect(ids).toContain(id);
