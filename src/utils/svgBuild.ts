@@ -350,11 +350,12 @@ export function buildDsvgOutput(
   const unitPositionsEl = cloneByKey(assignments.unitPositions);
   const provinceNamesEl = cloneByKey(assignments.provinceNames);
   const bordersEl = cloneByKey(assignments.borders);
-  const supplyCentersEl = cloneByKey(assignments.supplyCenters);
 
   // 4. Classify sibling groups as background/foreground
+  // scForegroundNodes is kept separate so SC is always appended last (top of foreground).
   const backgroundNodes: Element[] = [];
   const foregroundNodes: Element[] = [];
+  const scForegroundNodes: Element[] = [];
 
   if (assignments.provinces) {
     const provincesPath = assignments.provinces
@@ -380,7 +381,6 @@ export function buildDsvgOutput(
         assignments.unitPositions,
         assignments.provinceNames,
         assignments.borders,
-        assignments.supplyCenters,
       ]) {
         if (!key) continue;
         const kPath = key.replace(/^root-/, "").split("-").map(Number);
@@ -390,11 +390,23 @@ export function buildDsvgOutput(
         assignedLocalIndices.add(kPath[kPath.length - 1]);
       }
 
+      let scLocalIdx: number | null = null;
+      if (assignments.supplyCenters) {
+        const scPath = assignments.supplyCenters.replace(/^root-/, "").split("-").map(Number);
+        if (scPath.length === provincesPath.length) {
+          const scParent = scPath.slice(0, -1);
+          if (scParent.every((v, j) => v === parentPath[j])) {
+            scLocalIdx = scPath[scPath.length - 1];
+          }
+        }
+      }
+
       Array.from(parentEl.children).forEach((child, i) => {
         if (child.tagName.toLowerCase() !== "g") return;
         if (assignedLocalIndices.has(i)) return;
         const clone = child.cloneNode(true) as Element;
         if (i < provincesLocalIdx) backgroundNodes.push(clone);
+        else if (i === scLocalIdx) scForegroundNodes.push(clone);
         else foregroundNodes.push(clone);
       });
     }
@@ -417,7 +429,7 @@ export function buildDsvgOutput(
 
   // 6. Build clean output document in canonical layer order:
   //    background → provinces → named-coasts → unit-positions →
-  //    supply-centers → province-names → borders → foreground
+  //    province-names → borders → foreground (supply-centers live inside foreground)
   while (root.firstChild) root.removeChild(root.firstChild);
   headerNodes.forEach(n => root.appendChild(n));
 
@@ -523,11 +535,6 @@ export function buildDsvgOutput(
   }
   root.appendChild(upLayer);
 
-  const scLayer = supplyCentersEl ?? makeLayerGroup(doc, "supply-centers");
-  scLayer.setAttribute("id", "supply-centers");
-  scLayer.setAttribute("style", "display:none");
-  root.appendChild(scLayer);
-
   const pnLayer = provinceNamesEl ?? makeLayerGroup(doc, "province-names");
   pnLayer.setAttribute("id", "province-names");
   pnLayer.setAttribute("style", "display:inline");
@@ -540,6 +547,7 @@ export function buildDsvgOutput(
   const fg = makeLayerGroup(doc, "foreground");
   fg.setAttribute("style", "display:inline");
   foregroundNodes.forEach(el => fg.appendChild(el));
+  scForegroundNodes.forEach(el => fg.appendChild(el));
   root.appendChild(fg);
 
   // 7. Strip all Inkscape/sodipodi attributes from the whole tree
