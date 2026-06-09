@@ -45,9 +45,17 @@ function validateDsvgStructure(svgContent: string): string[] {
       .filter((id): id is string => id !== null)
   );
 
-  for (const required of ["provinces", "unit-positions", "supply-centers"]) {
+  for (const required of ["provinces", "unit-positions"]) {
     if (!rootLayerIds.has(required)) {
       errors.push(`Layer <g id="${required}"> is missing as a direct child of <svg>.`);
+    }
+  }
+
+  const scEl = doc.getElementById("supply-centers");
+  if (scEl) {
+    const fg = doc.getElementById("foreground");
+    if (!fg || !fg.contains(scEl)) {
+      errors.push(`Layer <g id="supply-centers"> exists but is not inside <g id="foreground">.`);
     }
   }
 
