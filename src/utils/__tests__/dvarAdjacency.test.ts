@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Paths that share the same bracketed tag, e.g. "[adj-ab]", are treated as intersecting.
+vi.mock("../geometry", () => ({
+  detectPathIntersections: vi.fn((pathA: string, pathB: string) => {
+    const tagA = pathA.match(/\[([^\]]+)\]/)?.[1];
+    const tagB = pathB.match(/\[([^\]]+)\]/)?.[1];
+    return tagA !== undefined && tagA === tagB;
+  }),
+}));
+
 import {
   buildEmptyDvarAdjacencyMap,
   autoDetectDvarAdjacencies,
@@ -8,399 +18,352 @@ import {
   getIsolatedIds,
 } from "../dvarAdjacency";
 
-vi.mock("../geometry", () => ({
-  detectPathIntersections: vi.fn(),
-}));
+beforeEach(() => vi.clearAllMocks());
 
-import { detectPathIntersections } from "../geometry";
-const mockDetect = vi.mocked(detectPathIntersections);
-
-beforeEach(() => {
-  mockDetect.mockReset();
-});
-
-// ---------------------------------------------------------------------------
-// buildEmptyDvarAdjacencyMap
-// ---------------------------------------------------------------------------
+// ─── buildEmptyDvarAdjacencyMap ───────────────────────────────────────────────
 
 describe("buildEmptyDvarAdjacencyMap", () => {
-  it("creates a key with an empty array for every id", () => {
-    const map = buildEmptyDvarAdjacencyMap(["par", "bur", "bre"]);
-    expect(Object.keys(map).sort()).toEqual(["bre", "bur", "par"]);
-    for (const v of Object.values(map)) expect(v).toEqual([]);
+  it("returns an entry with an empty array for each id", () => {
+    const map = buildEmptyDvarAdjacencyMap(["a", "b", "c"]);
+    expect(map).toEqual({ a: [], b: [], c: [] });
   });
 
-  it("returns an empty object for an empty id list", () => {
+  it("returns an empty object for no ids", () => {
     expect(buildEmptyDvarAdjacencyMap([])).toEqual({});
   });
 });
 
-// ---------------------------------------------------------------------------
-// autoDetectDvarAdjacencies — province ↔ province (no named coasts)
-// ---------------------------------------------------------------------------
+// ─── autoDetectDvarAdjacencies ────────────────────────────────────────────────
 
-describe("autoDetectDvarAdjacencies — province ↔ province (no named coasts)", () => {
-  it("army pass for land ↔ land", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "par", paths: ["p"] }, { id: "bur", paths: ["p"] }],
-      [],
-      { par: "land", bur: "land" }
-    );
-    expect(map["par"]).toEqual([{ to: "bur", pass: "army" }]);
-    expect(map["bur"]).toEqual([{ to: "par", pass: "army" }]);
+describe("autoDetectDvarAdjacencies – province ↔ province (no named coasts)", () => {
+  it("land ↔ land → army", () => {
+    const shapes = [
+      { id: "a", paths: ["[ab]"] },
+      { id: "b", paths: ["[ab]"] },
+    ];
+    const types = { a: "land", b: "land" };
+    const map = autoDetectDvarAdjacencies(shapes, [], types);
+    expect(map["a"]).toContainEqual({ to: "b", pass: "army" });
+    expect(map["b"]).toContainEqual({ to: "a", pass: "army" });
   });
 
-  it("both pass for coastal ↔ coastal", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "bre", paths: ["p"] }, { id: "pic", paths: ["p"] }],
-      [],
-      { bre: "coastal", pic: "coastal" }
-    );
-    expect(map["bre"][0].pass).toBe("both");
-    expect(map["pic"][0].pass).toBe("both");
+  it("coastal ↔ coastal → both", () => {
+    const shapes = [
+      { id: "a", paths: ["[ab]"] },
+      { id: "b", paths: ["[ab]"] },
+    ];
+    const types = { a: "coastal", b: "coastal" };
+    const map = autoDetectDvarAdjacencies(shapes, [], types);
+    expect(map["a"][0].pass).toBe("both");
   });
 
-  it("fleet pass for sea ↔ coastal", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "mid", paths: ["p"] }, { id: "bre", paths: ["p"] }],
-      [],
-      { mid: "sea", bre: "coastal" }
-    );
-    expect(map["mid"][0].pass).toBe("fleet");
-    expect(map["bre"][0].pass).toBe("fleet");
+  it("coastal ↔ land → army", () => {
+    const shapes = [
+      { id: "a", paths: ["[ab]"] },
+      { id: "b", paths: ["[ab]"] },
+    ];
+    const types = { a: "coastal", b: "land" };
+    const map = autoDetectDvarAdjacencies(shapes, [], types);
+    expect(map["a"][0].pass).toBe("army");
   });
 
-  it("fleet pass for sea ↔ sea", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "mid", paths: ["p"] }, { id: "nat", paths: ["p"] }],
-      [],
-      { mid: "sea", nat: "sea" }
-    );
-    expect(map["mid"][0].pass).toBe("fleet");
+  it("sea ↔ sea → fleet", () => {
+    const shapes = [
+      { id: "a", paths: ["[ab]"] },
+      { id: "b", paths: ["[ab]"] },
+    ];
+    const types = { a: "sea", b: "sea" };
+    const map = autoDetectDvarAdjacencies(shapes, [], types);
+    expect(map["a"][0].pass).toBe("fleet");
   });
 
-  it("army pass for land ↔ coastal", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "par", paths: ["p"] }, { id: "bre", paths: ["p"] }],
-      [],
-      { par: "land", bre: "coastal" }
-    );
-    expect(map["par"][0].pass).toBe("army");
+  it("sea ↔ coastal → fleet", () => {
+    const shapes = [
+      { id: "a", paths: ["[ab]"] },
+      { id: "b", paths: ["[ab]"] },
+    ];
+    const types = { a: "sea", b: "coastal" };
+    const map = autoDetectDvarAdjacencies(shapes, [], types);
+    expect(map["a"][0].pass).toBe("fleet");
   });
 
-  it("no adjacency added when paths do not intersect", () => {
-    mockDetect.mockReturnValue(false);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "par", paths: ["p"] }, { id: "ber", paths: ["p"] }],
-      [],
-      { par: "land", ber: "land" }
-    );
-    expect(map["par"]).toEqual([]);
-    expect(map["ber"]).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// autoDetectDvarAdjacencies — province ↔ province (one or both have named coasts)
-// ---------------------------------------------------------------------------
-
-describe("autoDetectDvarAdjacencies — province ↔ province with named coasts", () => {
-  it("adds army adjacency when named-coast province borders a land province", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "spa", paths: ["p"] }, { id: "gas", paths: ["p"] }],
-      [{ id: "spa/nc", parentId: "spa", paths: ["p"] }, { id: "spa/sc", parentId: "spa", paths: ["p"] }],
-      { spa: "coastal", gas: "land" }
-    );
-    expect(map["spa"].some(a => a.to === "gas" && a.pass === "army")).toBe(true);
-    expect(map["gas"].some(a => a.to === "spa" && a.pass === "army")).toBe(true);
+  it("non-adjacent provinces produce no adjacency", () => {
+    const shapes = [
+      { id: "a", paths: ["[a-only]"] },
+      { id: "b", paths: ["[b-only]"] },
+    ];
+    const map = autoDetectDvarAdjacencies(shapes, [], {});
+    expect(map["a"]).toHaveLength(0);
+    expect(map["b"]).toHaveLength(0);
   });
 
-  it("skips the province ↔ province link when the sea neighbour borders a named-coast province (line 77)", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "spa", paths: ["p"] }, { id: "mid", paths: ["p"] }],
-      [{ id: "spa/nc", parentId: "spa", paths: ["p"] }, { id: "spa/sc", parentId: "spa", paths: ["p"] }],
-      { spa: "coastal", mid: "sea" }
-    );
-    // Fleet access to spa is only via the named coasts — no spa↔mid at province level
-    expect(map["spa"].some(a => a.to === "mid")).toBe(false);
-    expect(map["mid"].some(a => a.to === "spa")).toBe(false);
+  it("adjacencies are symmetric", () => {
+    const shapes = [
+      { id: "a", paths: ["[ab]"] },
+      { id: "b", paths: ["[ab]"] },
+    ];
+    const map = autoDetectDvarAdjacencies(shapes, [], { a: "land", b: "land" });
+    expect(map["a"].find(x => x.to === "b")).toBeDefined();
+    expect(map["b"].find(x => x.to === "a")).toBeDefined();
   });
 });
 
-// ---------------------------------------------------------------------------
-// autoDetectDvarAdjacencies — named coast (subprovince) ↔ province
-// ---------------------------------------------------------------------------
-
-describe("autoDetectDvarAdjacencies — subprovince ↔ province", () => {
-  it("fleet link for coast ↔ sea province", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "gas", paths: ["p"] }, { id: "mid", paths: ["p"] }],
-      [{ id: "spa/nc", parentId: "spa", paths: ["p"] }],
-      { gas: "land", mid: "sea" }
-    );
-    expect(map["spa/nc"].some(a => a.to === "mid" && a.pass === "fleet")).toBe(true);
-    expect(map["mid"].some(a => a.to === "spa/nc" && a.pass === "fleet")).toBe(true);
+describe("autoDetectDvarAdjacencies – named coast interactions", () => {
+  it("coast ↔ coast → fleet", () => {
+    const provinces = [{ id: "spa", paths: ["[spa-only]"] }];
+    const coasts = [
+      { id: "spa/nc", parentId: "spa", paths: ["[nc-sc]"] },
+      { id: "spa/sc", parentId: "spa", paths: ["[nc-sc]"] },
+    ];
+    const map = autoDetectDvarAdjacencies(provinces, coasts, { spa: "namedCoasts" });
+    expect(map["spa/nc"]).toContainEqual({ to: "spa/sc", pass: "fleet" });
+    expect(map["spa/sc"]).toContainEqual({ to: "spa/nc", pass: "fleet" });
   });
 
-  it("fleet link for coast ↔ coastal province", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "gas", paths: ["p"] }],
-      [{ id: "spa/nc", parentId: "spa", paths: ["p"] }],
-      { gas: "coastal" }
-    );
-    expect(map["spa/nc"].some(a => a.to === "gas" && a.pass === "fleet")).toBe(true);
-    expect(map["gas"].some(a => a.to === "spa/nc" && a.pass === "fleet")).toBe(true);
+  it("coast ↔ sea → fleet", () => {
+    const provinces = [
+      { id: "spa", paths: ["[spa-only]"] },
+      { id: "mid", paths: ["[nc-mid]"] },
+    ];
+    const coasts = [{ id: "spa/nc", parentId: "spa", paths: ["[nc-mid]"] }];
+    const types = { spa: "namedCoasts", mid: "sea" };
+    const map = autoDetectDvarAdjacencies(provinces, coasts, types);
+    expect(map["spa/nc"]).toContainEqual({ to: "mid", pass: "fleet" });
+    expect(map["mid"]).toContainEqual({ to: "spa/nc", pass: "fleet" });
   });
 
-  it("no link for coast ↔ land province", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "gas", paths: ["p"] }],
-      [{ id: "spa/nc", parentId: "spa", paths: ["p"] }],
-      { gas: "land" }
-    );
-    expect(map["spa/nc"]).toEqual([]);
-    expect(map["gas"]).toEqual([]);
+  it("coast ↔ coastal province (no coasts of its own) → fleet", () => {
+    const provinces = [
+      { id: "spa", paths: ["[spa-only]"] },
+      { id: "mar", paths: ["[nc-mar]"] },
+    ];
+    const coasts = [{ id: "spa/nc", parentId: "spa", paths: ["[nc-mar]"] }];
+    const types = { spa: "namedCoasts", mar: "coastal" };
+    const map = autoDetectDvarAdjacencies(provinces, coasts, types);
+    expect(map["spa/nc"]).toContainEqual({ to: "mar", pass: "fleet" });
   });
 
-  it("skips coast ↔ province when that province itself has named coasts", () => {
-    // spa/nc intersects with por, but por also has named coasts → skip
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [{ id: "por", paths: ["p"] }],
-      [
-        { id: "spa/nc", parentId: "spa", paths: ["p"] },
-        { id: "por/nc", parentId: "por", paths: ["p"] },
-      ],
-      { por: "coastal" }
-    );
-    expect(map["spa/nc"].some(a => a.to === "por")).toBe(false);
-    expect(map["por"].some(a => a.to === "spa/nc")).toBe(false);
+  it("coast ↔ land province → skipped (no adjacency added)", () => {
+    const provinces = [
+      { id: "spa", paths: ["[spa-only]"] },
+      { id: "gas", paths: ["[nc-gas]"] },
+    ];
+    const coasts = [{ id: "spa/nc", parentId: "spa", paths: ["[nc-gas]"] }];
+    const types = { spa: "namedCoasts", gas: "land" };
+    const map = autoDetectDvarAdjacencies(provinces, coasts, types);
+    expect(map["spa/nc"].find(x => x.to === "gas")).toBeUndefined();
+    expect(map["gas"].find(x => x.to === "spa/nc")).toBeUndefined();
+  });
+
+  it("coast ↔ province that itself has named coasts → skipped", () => {
+    // Two namedCoast parents share a border — their connection goes via coast↔coast, not coast↔parent
+    const provinces = [
+      { id: "spa", paths: ["[spa-por]"] },
+      { id: "por", paths: ["[spa-por]"] },
+    ];
+    const coasts = [
+      { id: "spa/nc", parentId: "spa", paths: ["[nc-only]"] },
+      { id: "por/wc", parentId: "por", paths: ["[wc-only]"] },
+    ];
+    const types = { spa: "namedCoasts", por: "namedCoasts" };
+    const map = autoDetectDvarAdjacencies(provinces, coasts, types);
+    // spa/nc should not link to por, because por has coasts of its own
+    expect(map["spa/nc"].find(x => x.to === "por")).toBeUndefined();
+  });
+
+  it("namedCoasts parent ↔ land province → army (no fleet via parent body)", () => {
+    const provinces = [
+      { id: "spa", paths: ["[spa-gas]"] },
+      { id: "gas", paths: ["[spa-gas]"] },
+    ];
+    const coasts = [{ id: "spa/nc", parentId: "spa", paths: ["[nc-only]"] }];
+    const types = { spa: "namedCoasts", gas: "land" };
+    const map = autoDetectDvarAdjacencies(provinces, coasts, types);
+    expect(map["spa"]).toContainEqual({ to: "gas", pass: "army" });
+    expect(map["gas"]).toContainEqual({ to: "spa", pass: "army" });
+  });
+
+  it("namedCoasts parent ↔ sea → skipped entirely (fleet goes through coast subprovinces)", () => {
+    const provinces = [
+      { id: "spa", paths: ["[spa-mid]"] },
+      { id: "mid", paths: ["[spa-mid]"] },
+    ];
+    const coasts = [{ id: "spa/nc", parentId: "spa", paths: ["[nc-only]"] }];
+    const types = { spa: "namedCoasts", mid: "sea" };
+    const map = autoDetectDvarAdjacencies(provinces, coasts, types);
+    expect(map["spa"].find(x => x.to === "mid")).toBeUndefined();
+    expect(map["mid"].find(x => x.to === "spa")).toBeUndefined();
   });
 });
 
-// ---------------------------------------------------------------------------
-// autoDetectDvarAdjacencies — named coast ↔ named coast (subprovince ↔ subprovince)
-// ---------------------------------------------------------------------------
-
-describe("autoDetectDvarAdjacencies — subprovince ↔ subprovince", () => {
-  it("always fleet regardless of parent province types", () => {
-    mockDetect.mockReturnValue(true);
-    const map = autoDetectDvarAdjacencies(
-      [],
-      [
-        { id: "spa/nc", parentId: "spa", paths: ["p"] },
-        { id: "por/sc", parentId: "por", paths: ["p"] },
-      ],
-      { spa: "coastal", por: "coastal" }
-    );
-    expect(map["spa/nc"]).toEqual([{ to: "por/sc", pass: "fleet" }]);
-    expect(map["por/sc"]).toEqual([{ to: "spa/nc", pass: "fleet" }]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// toggleDvarAdjacency
-// ---------------------------------------------------------------------------
+// ─── toggleDvarAdjacency ──────────────────────────────────────────────────────
 
 describe("toggleDvarAdjacency", () => {
-  it("adds a bidirectional link when none exists", () => {
-    const base = buildEmptyDvarAdjacencyMap(["par", "bur"]);
-    const result = toggleDvarAdjacency(base, "par", "bur");
-    expect(result["par"]).toEqual([{ to: "bur", pass: "both" }]);
-    expect(result["bur"]).toEqual([{ to: "par", pass: "both" }]);
+  it("adds adjacency in both directions when not present", () => {
+    const map = { a: [], b: [] };
+    const result = toggleDvarAdjacency(map, "a", "b");
+    expect(result["a"]).toContainEqual({ to: "b", pass: "both" });
+    expect(result["b"]).toContainEqual({ to: "a", pass: "both" });
   });
 
-  it("uses the supplied defaultPass", () => {
-    const base = buildEmptyDvarAdjacencyMap(["par", "bur"]);
-    const result = toggleDvarAdjacency(base, "par", "bur", "army");
-    expect(result["par"][0].pass).toBe("army");
-    expect(result["bur"][0].pass).toBe("army");
+  it("uses provided defaultPass", () => {
+    const map = { a: [], b: [] };
+    const result = toggleDvarAdjacency(map, "a", "b", "fleet");
+    expect(result["a"][0].pass).toBe("fleet");
   });
 
-  it("removes the bidirectional link when it already exists", () => {
-    const base = buildEmptyDvarAdjacencyMap(["par", "bur"]);
-    const after1 = toggleDvarAdjacency(base, "par", "bur");
-    const after2 = toggleDvarAdjacency(after1, "par", "bur");
-    expect(after2["par"]).toEqual([]);
-    expect(after2["bur"]).toEqual([]);
+  it("removes adjacency in both directions when already present", () => {
+    const map = {
+      a: [{ to: "b", pass: "both" as const }],
+      b: [{ to: "a", pass: "both" as const }],
+    };
+    const result = toggleDvarAdjacency(map, "a", "b");
+    expect(result["a"].find(x => x.to === "b")).toBeUndefined();
+    expect(result["b"].find(x => x.to === "a")).toBeUndefined();
+  });
+
+  it("creates missing map keys when toggling in", () => {
+    const result = toggleDvarAdjacency({}, "x", "y");
+    expect(result["x"]).toContainEqual({ to: "y", pass: "both" });
+    expect(result["y"]).toContainEqual({ to: "x", pass: "both" });
   });
 
   it("does not mutate the original map", () => {
-    const base = buildEmptyDvarAdjacencyMap(["par", "bur"]);
-    toggleDvarAdjacency(base, "par", "bur");
-    expect(base["par"]).toEqual([]);
-  });
-
-  it("preserves other existing adjacencies", () => {
-    const base: Record<string, { to: string; pass: "army" | "fleet" | "both" }[]> = {
-      par: [{ to: "bre", pass: "army" }],
-      bur: [],
-      bre: [{ to: "par", pass: "army" }],
-    };
-    const result = toggleDvarAdjacency(base, "par", "bur");
-    expect(result["par"].some(a => a.to === "bre")).toBe(true);
-    expect(result["par"].some(a => a.to === "bur")).toBe(true);
-  });
-
-  it("auto-creates missing keys for provinces not yet in the map", () => {
-    const result = toggleDvarAdjacency({}, "par", "bur");
-    expect(result["par"]).toEqual([{ to: "bur", pass: "both" }]);
-    expect(result["bur"]).toEqual([{ to: "par", pass: "both" }]);
+    const map = { a: [{ to: "c", pass: "army" as const }], b: [] };
+    toggleDvarAdjacency(map, "a", "b");
+    expect(map["a"]).toHaveLength(1);
+    expect(map["b"]).toHaveLength(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// toggleDvarAdjacencyWithCoasts
-// ---------------------------------------------------------------------------
+// ─── toggleDvarAdjacencyWithCoasts ───────────────────────────────────────────
 
 describe("toggleDvarAdjacencyWithCoasts", () => {
-  it("adds main↔main plus main↔coast and coast↔coast links when no connection exists", () => {
-    const base = buildEmptyDvarAdjacencyMap(["spa", "spa/nc", "spa/sc", "mid"]);
-    const result = toggleDvarAdjacencyWithCoasts(base, "mid", "spa", ["spa/nc", "spa/sc"], [], "fleet");
-
-    expect(result["mid"].some(a => a.to === "spa" && a.pass === "fleet")).toBe(true);
-    expect(result["spa"].some(a => a.to === "mid")).toBe(true);
-
-    expect(result["mid"].some(a => a.to === "spa/nc" && a.pass === "fleet")).toBe(true);
-    expect(result["mid"].some(a => a.to === "spa/sc" && a.pass === "fleet")).toBe(true);
-    expect(result["spa/nc"].some(a => a.to === "mid")).toBe(true);
-    expect(result["spa/sc"].some(a => a.to === "mid")).toBe(true);
+  it("adds province↔province with defaultPass when no connection exists", () => {
+    const map = { a: [], b: [] };
+    const result = toggleDvarAdjacencyWithCoasts(map, "a", "b", [], [], "both");
+    expect(result["a"]).toContainEqual({ to: "b", pass: "both" });
+    expect(result["b"]).toContainEqual({ to: "a", pass: "both" });
   });
 
-  it("adds fromCoast↔toId and fromCoast↔toCoast fleet links when fromCoasts are provided", () => {
-    const base = buildEmptyDvarAdjacencyMap(["spa", "spa/nc", "spa/sc", "por", "por/nc"]);
-    const result = toggleDvarAdjacencyWithCoasts(
-      base, "spa", "por", ["por/nc"], ["spa/nc", "spa/sc"], "army"
-    );
-
-    // main↔main
-    expect(result["spa"].some(a => a.to === "por" && a.pass === "army")).toBe(true);
-    // fromCoast↔toId
-    expect(result["spa/nc"].some(a => a.to === "por" && a.pass === "fleet")).toBe(true);
-    expect(result["spa/sc"].some(a => a.to === "por" && a.pass === "fleet")).toBe(true);
-    // fromCoast↔toCoast
-    expect(result["spa/nc"].some(a => a.to === "por/nc" && a.pass === "fleet")).toBe(true);
-    expect(result["spa/sc"].some(a => a.to === "por/nc" && a.pass === "fleet")).toBe(true);
-    // fromId↔toCoast
-    expect(result["spa"].some(a => a.to === "por/nc" && a.pass === "fleet")).toBe(true);
+  it("adds province↔coast links with fleet pass", () => {
+    const map = { a: [], b: [], "b/nc": [] };
+    const result = toggleDvarAdjacencyWithCoasts(map, "a", "b", ["b/nc"], [], "both");
+    expect(result["a"]).toContainEqual({ to: "b/nc", pass: "fleet" });
+    expect(result["b/nc"]).toContainEqual({ to: "a", pass: "fleet" });
   });
 
-  it("removes all links across the group when any connection already exists (main↔main)", () => {
-    const base = buildEmptyDvarAdjacencyMap(["spa", "spa/nc", "spa/sc", "mid"]);
-    const after1 = toggleDvarAdjacencyWithCoasts(base, "mid", "spa", ["spa/nc", "spa/sc"], [], "fleet");
-    const after2 = toggleDvarAdjacencyWithCoasts(after1, "mid", "spa", ["spa/nc", "spa/sc"], [], "fleet");
-
-    expect(after2["mid"]).toEqual([]);
-    expect(after2["spa"]).toEqual([]);
-    expect(after2["spa/nc"]).toEqual([]);
-    expect(after2["spa/sc"]).toEqual([]);
+  it("adds coast↔province links with fleet pass", () => {
+    const map = { a: [], "a/nc": [], b: [] };
+    const result = toggleDvarAdjacencyWithCoasts(map, "a", "b", [], ["a/nc"], "both");
+    expect(result["a/nc"]).toContainEqual({ to: "b", pass: "fleet" });
+    expect(result["b"]).toContainEqual({ to: "a/nc", pass: "fleet" });
   });
 
-  it("removes all links when existing connection is only on a coast (hasAnyConnection via coast)", () => {
-    // Manually set up a state where only mid↔spa/nc exists
-    const base: Record<string, { to: string; pass: "army" | "fleet" | "both" }[]> = {
-      mid: [{ to: "spa/nc", pass: "fleet" }],
-      spa: [],
-      "spa/nc": [{ to: "mid", pass: "fleet" }],
-      "spa/sc": [],
+  it("adds coast↔coast links with fleet pass", () => {
+    const map = { a: [], "a/nc": [], b: [], "b/nc": [] };
+    const result = toggleDvarAdjacencyWithCoasts(map, "a", "b", ["b/nc"], ["a/nc"], "both");
+    expect(result["a/nc"]).toContainEqual({ to: "b/nc", pass: "fleet" });
+    expect(result["b/nc"]).toContainEqual({ to: "a/nc", pass: "fleet" });
+  });
+
+  it("removes all links (province and coast) when any connection already exists", () => {
+    const map = {
+      a: [{ to: "b", pass: "both" as const }],
+      b: [{ to: "a", pass: "both" as const }],
+      "a/nc": [{ to: "b/nc", pass: "fleet" as const }],
+      "b/nc": [{ to: "a/nc", pass: "fleet" as const }],
     };
-    const result = toggleDvarAdjacencyWithCoasts(base, "mid", "spa", ["spa/nc", "spa/sc"], [], "fleet");
-    // hasAnyConnection should be true → remove all
-    expect(result["mid"]).toEqual([]);
-    expect(result["spa/nc"]).toEqual([]);
+    const result = toggleDvarAdjacencyWithCoasts(map, "a", "b", ["b/nc"], ["a/nc"], "both");
+    expect(result["a"].find(x => x.to === "b")).toBeUndefined();
+    expect(result["b"].find(x => x.to === "a")).toBeUndefined();
+    expect(result["a/nc"].find(x => x.to === "b/nc")).toBeUndefined();
+    expect(result["b/nc"].find(x => x.to === "a/nc")).toBeUndefined();
+  });
+
+  it("triggers removal when only a coast link exists (not the province link)", () => {
+    const map = {
+      a: [],
+      b: [],
+      "a/nc": [{ to: "b/nc", pass: "fleet" as const }],
+      "b/nc": [{ to: "a/nc", pass: "fleet" as const }],
+    };
+    const result = toggleDvarAdjacencyWithCoasts(map, "a", "b", ["b/nc"], ["a/nc"], "both");
+    expect(result["a/nc"].find(x => x.to === "b/nc")).toBeUndefined();
   });
 
   it("does not mutate the original map", () => {
-    const base = buildEmptyDvarAdjacencyMap(["spa", "mid"]);
-    toggleDvarAdjacencyWithCoasts(base, "mid", "spa", [], [], "fleet");
-    expect(base["mid"]).toEqual([]);
-  });
-
-  it("does not add duplicate links when called with no coasts", () => {
-    const base = buildEmptyDvarAdjacencyMap(["par", "bur"]);
-    const result = toggleDvarAdjacencyWithCoasts(base, "par", "bur", [], [], "army");
-    expect(result["par"].filter(a => a.to === "bur")).toHaveLength(1);
-    expect(result["bur"].filter(a => a.to === "par")).toHaveLength(1);
+    const map = { a: [], b: [] };
+    toggleDvarAdjacencyWithCoasts(map, "a", "b", [], [], "army");
+    expect(map["a"]).toHaveLength(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// setDvarAdjacencyPass
-// ---------------------------------------------------------------------------
+// ─── setDvarAdjacencyPass ─────────────────────────────────────────────────────
 
 describe("setDvarAdjacencyPass", () => {
-  it("updates pass type bidirectionally", () => {
-    const base: Record<string, { to: string; pass: "army" | "fleet" | "both" }[]> = {
-      par: [{ to: "bur", pass: "army" }],
-      bur: [{ to: "par", pass: "army" }],
+  it("updates pass type in both directions", () => {
+    const map = {
+      a: [{ to: "b", pass: "army" as const }],
+      b: [{ to: "a", pass: "army" as const }],
     };
-    const result = setDvarAdjacencyPass(base, "par", "bur", "both");
-    expect(result["par"][0].pass).toBe("both");
-    expect(result["bur"][0].pass).toBe("both");
+    const result = setDvarAdjacencyPass(map, "a", "b", "fleet");
+    expect(result["a"].find(x => x.to === "b")?.pass).toBe("fleet");
+    expect(result["b"].find(x => x.to === "a")?.pass).toBe("fleet");
   });
 
-  it("does not affect unrelated adjacencies", () => {
-    const base: Record<string, { to: string; pass: "army" | "fleet" | "both" }[]> = {
-      par: [{ to: "bur", pass: "army" }, { to: "bre", pass: "fleet" }],
-      bur: [{ to: "par", pass: "army" }],
-      bre: [{ to: "par", pass: "fleet" }],
+  it("leaves other adjacencies untouched", () => {
+    const map = {
+      a: [
+        { to: "b", pass: "army" as const },
+        { to: "c", pass: "both" as const },
+      ],
+      b: [{ to: "a", pass: "army" as const }],
+      c: [{ to: "a", pass: "both" as const }],
     };
-    const result = setDvarAdjacencyPass(base, "par", "bur", "both");
-    expect(result["par"].find(a => a.to === "bre")?.pass).toBe("fleet");
-    expect(result["bre"][0].pass).toBe("fleet");
+    const result = setDvarAdjacencyPass(map, "a", "b", "fleet");
+    expect(result["a"].find(x => x.to === "c")?.pass).toBe("both");
+  });
+
+  it("is a no-op when the pair does not exist", () => {
+    const map = { a: [], b: [] };
+    const result = setDvarAdjacencyPass(map, "a", "b", "fleet");
+    expect(result["a"]).toHaveLength(0);
+    expect(result["b"]).toHaveLength(0);
   });
 
   it("does not mutate the original map", () => {
-    const base: Record<string, { to: string; pass: "army" | "fleet" | "both" }[]> = {
-      par: [{ to: "bur", pass: "army" }],
-      bur: [{ to: "par", pass: "army" }],
+    const map = {
+      a: [{ to: "b", pass: "army" as const }],
+      b: [{ to: "a", pass: "army" as const }],
     };
-    setDvarAdjacencyPass(base, "par", "bur", "fleet");
-    expect(base["par"][0].pass).toBe("army");
-  });
-
-  it("is a no-op when the link does not exist", () => {
-    const base = buildEmptyDvarAdjacencyMap(["par", "bur"]);
-    const result = setDvarAdjacencyPass(base, "par", "bur", "fleet");
-    expect(result["par"]).toEqual([]);
-    expect(result["bur"]).toEqual([]);
+    setDvarAdjacencyPass(map, "a", "b", "fleet");
+    expect(map["a"][0].pass).toBe("army");
   });
 });
 
-// ---------------------------------------------------------------------------
-// getIsolatedIds
-// ---------------------------------------------------------------------------
+// ─── getIsolatedIds ───────────────────────────────────────────────────────────
 
 describe("getIsolatedIds", () => {
-  it("returns ids with no adjacencies", () => {
-    const map = { par: [], bur: [{ to: "par", pass: "army" as const }], ber: [] };
-    expect(getIsolatedIds(["par", "bur", "ber"], map)).toEqual(["par", "ber"]);
+  it("returns ids with empty adjacency array", () => {
+    const map = { a: [{ to: "b", pass: "army" as const }], b: [], c: [] };
+    expect(getIsolatedIds(["a", "b", "c"], map)).toEqual(["b", "c"]);
   });
 
-  it("returns empty array when all ids have at least one adjacency", () => {
+  it("returns ids absent from the map", () => {
+    const map = { a: [{ to: "b", pass: "army" as const }] };
+    expect(getIsolatedIds(["a", "b"], map)).toEqual(["b"]);
+  });
+
+  it("returns empty array when all ids have adjacencies", () => {
     const map = {
-      par: [{ to: "bur", pass: "army" as const }],
-      bur: [{ to: "par", pass: "army" as const }],
+      a: [{ to: "b", pass: "army" as const }],
+      b: [{ to: "a", pass: "army" as const }],
     };
-    expect(getIsolatedIds(["par", "bur"], map)).toEqual([]);
+    expect(getIsolatedIds(["a", "b"], map)).toEqual([]);
   });
 
-  it("treats ids missing from the map as isolated", () => {
-    const map: Record<string, { to: string; pass: "army" | "fleet" | "both" }[]> = {};
-    expect(getIsolatedIds(["par"], map)).toEqual(["par"]);
-  });
-
-  it("returns all ids when the map is empty", () => {
-    expect(getIsolatedIds(["par", "bur"], {})).toEqual(["par", "bur"]);
+  it("returns empty array for empty id list", () => {
+    expect(getIsolatedIds([], {})).toEqual([]);
   });
 });
