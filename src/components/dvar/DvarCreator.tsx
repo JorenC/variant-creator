@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { validateDsvg, parseDsvg } from "@/utils/parseDsvg";
 import { buildEmptyDvarAdjacencyMap } from "@/utils/dvarAdjacency";
-import { computeMismatches, applyIdRemapping } from "@/utils/dvarReconcile";
+import { computeMismatches, applyIdRemapping, collectPreFillWarnings } from "@/utils/dvarReconcile";
 import {
   buildInitialProvinces,
   buildInitialDominanceRules,
@@ -45,6 +45,13 @@ import type {
   ProvinceTypesFormValues,
 } from "@/components/dvar/schemas";
 import { DVAR_STEPS, STEP_META } from "@/components/dvar/steps";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { ReconcileStep } from "@/components/dvar/ReconcileStep";
 import { BasicInfoForm, type BasicInfoFormHandle } from "@/components/dvar/BasicInfoForm";
 import { NationsForm, type NationsFormHandle } from "@/components/dvar/NationsForm";
@@ -85,6 +92,7 @@ export function DvarCreator() {
   const [reconcileMismatches, setReconcileMismatches] = useState<ReconcileMismatches | null>(null);
   const [provinceReconcileMap, setProvinceReconcileMap] = useState<ReconcileMap>({});
   const [coastReconcileMap, setCoastReconcileMap] = useState<ReconcileMap>({});
+  const [preFillWarnings, setPreFillWarnings] = useState<string[]>([]);
   const basicInfoRef = useRef<BasicInfoFormHandle>(null);
   const nationsRef = useRef<NationsFormHandle>(null);
   const provinceNamesRef = useRef<ProvinceNamesFormHandle>(null);
@@ -220,6 +228,8 @@ export function DvarCreator() {
 
     // adjudication modifiers
     setAdjudicationModifiersData(dvar.adjudicationModifiers ?? []);
+
+    setPreFillWarnings(collectPreFillWarnings(dvar));
   };
 
   const processFile = async (file: File) => {
@@ -358,6 +368,7 @@ export function DvarCreator() {
     setReconcileMismatches(null);
     setProvinceReconcileMap({});
     setCoastReconcileMap({});
+    setPreFillWarnings([]);
   };
 
   const handleBack = () => {
@@ -956,6 +967,28 @@ export function DvarCreator() {
         />
       </div>
     </div>
+
+    <Dialog open={preFillWarnings.length > 0} onOpenChange={open => { if (!open) setPreFillWarnings([]); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Elements dropped</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          The following data from your dVAR could not be carried over and was dropped:
+        </p>
+        <ul className="space-y-1">
+          {preFillWarnings.map((w, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm">
+              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+              {w}
+            </li>
+          ))}
+        </ul>
+        <DialogFooter>
+          <Button onClick={() => setPreFillWarnings([])}>Continue</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

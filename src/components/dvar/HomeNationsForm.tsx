@@ -349,7 +349,7 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                                 : "text-muted-foreground hover:text-foreground"
                             )}
                           >
-                            {unit === "army" ? "A" : unit === "fleet" ? "F" : "N"}
+                            {unit === "army" ? "A" : unit === "fleet" ? "F" : "No"}
                           </button>
                         );
                       })}
