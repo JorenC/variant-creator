@@ -63,6 +63,7 @@ function baseInput(): AssembleDvarInput {
     homeNationsData: {
       par: { nation: "fra", startingUnit: "army", startingCoast: null },
     },
+    extraUnits: [],
     adjacenciesData: { par: [{ to: "bur", pass: "army" }] },
     dominanceRulesData: {},
     phaseProgressionData: [
@@ -138,6 +139,7 @@ describe("assembleDvar", () => {
         lon: { nation: "eng", startingUnit: "fleet", startingCoast: null },
         stp: { nation: "fra", startingUnit: "fleet", startingCoast: "stp/sc" },
       },
+      extraUnits: [],
       adjacenciesData: {
         par: [{ to: "lon", pass: "army" }],
         lon: [{ to: "par", pass: "army" }, { to: "nth", pass: "fleet" }],
@@ -223,6 +225,120 @@ describe("assembleDvar", () => {
         { nation: "fra", province: "par" },
         { nation: "fra", province: "bre" },
       ]);
+    });
+  });
+
+  describe("extraUnits", () => {
+    it("appends an extra army on a non-SC province to initialState.units", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "bur", nation: "fra", unit: "army", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units } = out.initialState as { units: unknown[]; supplyCenters: unknown[] };
+      expect(units).toContainEqual({ nation: "fra", type: "Army", location: "bur" });
+    });
+
+    it("appends an extra fleet with a coast using the coast ID as location", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({
+        id: "spa", name: "Spain", type: "coastal", supplyCenter: false,
+        namedCoasts: [{ id: "spa/nc", name: "Spain (NC)" }, { id: "spa/sc", name: "Spain (SC)" }],
+      });
+      input.extraUnits = [{ id: "1", province: "spa", nation: "fra", unit: "fleet", coast: "spa/nc" }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units } = out.initialState as { units: unknown[]; supplyCenters: unknown[] };
+      expect(units).toContainEqual({ nation: "fra", type: "Fleet", location: "spa/nc" });
+    });
+
+    it("appends an extra fleet without a coast using the province ID as location", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({ id: "nth", name: "North Sea", type: "sea", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "nth", nation: "fra", unit: "fleet", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units } = out.initialState as { units: unknown[]; supplyCenters: unknown[] };
+      expect(units).toContainEqual({ nation: "fra", type: "Fleet", location: "nth" });
+    });
+
+    it("does NOT add the extra unit's province to initialState.supplyCenters", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "bur", nation: "fra", unit: "army", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { supplyCenters } = out.initialState as { units: unknown[]; supplyCenters: Array<{ province: string }> };
+      expect(supplyCenters.map(sc => sc.province)).not.toContain("bur");
+    });
+
+    it("does NOT set homeNation on the province for an extra unit", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "bur", nation: "fra", unit: "army", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const provinces = out.provinces as Array<Record<string, unknown>>;
+      const bur = provinces.find(p => p.id === "bur");
+      expect(bur?.homeNation).toBeUndefined();
+    });
+
+    it("places an extra unit on an SC owned by another nation without touching that SC's supply center entry", () => {
+      const input = baseInput();
+      // par is fra's home SC with an army; eng places an extra unit there too (edge case)
+      input.nations.push({ id: "eng", name: "England", color: "#00f" });
+      input.extraUnits = [{ id: "1", province: "par", nation: "eng", unit: "army", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units, supplyCenters } = out.initialState as {
+        units: Array<{ nation: string; type: string; location: string }>;
+        supplyCenters: Array<{ nation: string; province: string }>;
+      };
+      expect(units).toContainEqual({ nation: "fra", type: "Army", location: "par" });
+      expect(units).toContainEqual({ nation: "eng", type: "Army", location: "par" });
+      // supplyCenters entry for par must still belong to fra, not eng
+      expect(supplyCenters).toContainEqual({ nation: "fra", province: "par" });
+      expect(supplyCenters.filter(sc => sc.province === "par")).toHaveLength(1);
+    });
+
+    it("home units and extra units both appear in initialState.units", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "bur", nation: "fra", unit: "army", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units } = out.initialState as { units: Array<{ location: string }> };
+      const locations = units.map(u => u.location);
+      expect(locations).toContain("par"); // home unit
+      expect(locations).toContain("bur"); // extra unit
+    });
+
+    it("excludes extra units whose nation is neutral", () => {
+      const input = baseInput();
+      input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "bur", nation: "neutral", unit: "army", coast: null }];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units } = out.initialState as { units: Array<{ location: string }> };
+      expect(units.map(u => u.location)).not.toContain("bur");
+    });
+
+    it("excludes extra units with a blank province or no unit type", () => {
+      const input = baseInput();
+      input.extraUnits = [
+        { id: "1", province: "", nation: "fra", unit: "army", coast: null },
+        { id: "2", province: "bur", nation: "fra", unit: null, coast: null },
+      ];
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const { units } = out.initialState as { units: Array<{ location: string }> };
+      expect(units).toHaveLength(1); // only the home unit from baseInput
+    });
+
+    it("output with extra units passes DvarSchema", () => {
+      const input = baseInput();
+      input.nations = [{ id: "fra", name: "France", color: "#ffffff" }];
+      input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+      input.extraUnits = [{ id: "1", province: "bur", nation: "fra", unit: "army", coast: null }];
+      const output = assembleDvar(input);
+      const result = DvarSchema.safeParse(output);
+      if (!result.success) {
+        throw new Error(
+          "assembleDvar output with extraUnits failed schema validation:\n" +
+          result.error.issues.map(i => `  ${i.path.join(".")}: ${i.message}`).join("\n")
+        );
+      }
     });
   });
 

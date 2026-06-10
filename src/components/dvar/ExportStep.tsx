@@ -4,16 +4,18 @@ import { Download, ChevronRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { assembleDvar } from "@/utils/dvarAssemble";
 import { DvarSchema } from "@/utils/dvarSchema";
-import type { AssembleDvarInput, VictoryCondition } from "@/types/dvar";
+import type { AssembleDvarInput, ExtraUnit, VictoryCondition } from "@/types/dvar";
 
 export function ExportStep(props: AssembleDvarInput) {
-  const { basicInfo, nations, provincesData, homeNationsData, phaseProgressionData, victoryConditionsData, dominanceRulesData } = props;
+  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData } = props;
   const navigate = useNavigate();
   const [schemaError, setSchemaError] = useState<string | null>(null);
 
   const scCount = provincesData.provinces.filter(p => p.supplyCenter).length;
   const namedCoastCount = provincesData.provinces.reduce((n, p) => n + p.namedCoasts.length, 0);
-  const unitCount = Object.values(homeNationsData).filter(v => v.startingUnit !== null && v.nation && v.nation !== "" && v.nation !== "neutral").length;
+  const homeUnitCount = Object.values(homeNationsData).filter(v => v.startingUnit !== null && v.nation && v.nation !== "" && v.nation !== "neutral").length;
+  const extraUnitCount = (extraUnits ?? []).filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit && eu.nation !== "neutral").length;
+  const unitCount = homeUnitCount + extraUnitCount;
   const activeDominanceRules = Object.values(dominanceRulesData).filter(e => e.enabled).length;
   const nationMap = Object.fromEntries(nations.map(n => [n.id, n]));
 
@@ -114,6 +116,18 @@ export function ExportStep(props: AssembleDvarInput) {
                     <span key={provinceId} className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
                       {nation && <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: nation.color }} />}
                       {v.startingUnit === "army" ? "A" : "F"} {location}
+                    </span>
+                  );
+                })}
+              {(extraUnits ?? [])
+                .filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit && eu.nation !== "neutral")
+                .map((eu: ExtraUnit) => {
+                  const nation = nationMap[eu.nation];
+                  const location = eu.unit === "fleet" && eu.coast ? eu.coast : eu.province;
+                  return (
+                    <span key={eu.id} className="flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-xs">
+                      {nation && <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: nation.color }} />}
+                      {eu.unit === "army" ? "A" : "F"} {location}
                     </span>
                   );
                 })}

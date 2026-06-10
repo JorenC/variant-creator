@@ -27,13 +27,14 @@ import type { DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
 import type {
   Step,
   HomeNationsData,
+  HomeNationsFormValues,
+  ExtraUnit,
   DominanceRulesData,
   PhaseProgressionData,
   PhaseType,
   VictoryConditionsData,
   ProvincesFormValues,
   DvarJson,
-  DvarJsonUnit,
   ReconcileMap,
   ReconcileMismatches,
 } from "@/types/dvar";
@@ -69,6 +70,7 @@ export function DvarCreator() {
   const [nations, setNations] = useState<NationsValues["nations"] | null>(null);
   const [provincesData, setProvincesData] = useState<ProvincesFormValues | null>(null);
   const [homeNationsData, setHomeNationsData] = useState<HomeNationsData | null>(null);
+  const [extraUnitsData, setExtraUnitsData] = useState<ExtraUnit[] | null>(null);
   const [adjacenciesData, setAdjacenciesData] = useState<DvarAdjacencyMap | null>(null);
   const [dominanceRulesData, setDominanceRulesData] = useState<DominanceRulesData | null>(null);
   const [phaseProgressionData, setPhaseProgressionData] = useState<PhaseProgressionData | null>(null);
@@ -158,24 +160,35 @@ export function DvarCreator() {
     }
     setAdjacenciesData(adjacencyMap);
 
-    // home nations
+    // home nations + extra units
     const scNationMap = Object.fromEntries((dvar.initialState?.supplyCenters ?? []).map(sc => [sc.province, sc.nation]));
-    const unitByProvince = new Map<string, DvarJsonUnit>();
-    for (const unit of dvar.initialState?.units ?? []) {
-      const provinceId = unit.location.includes("/") ? unit.location.split("/")[0] : unit.location;
-      unitByProvince.set(provinceId, unit);
-    }
     const homeNations: HomeNationsData = {};
     for (const p of provinces) {
       if (!p.supplyCenter) continue;
-      const unit = unitByProvince.get(p.id);
-      homeNations[p.id] = {
-        nation: scNationMap[p.id] ?? "",
-        startingUnit: unit ? (unit.type === "Army" ? "army" : "fleet") : null,
-        startingCoast: unit && unit.location.includes("/") ? unit.location : null,
-      };
+      homeNations[p.id] = { nation: scNationMap[p.id] ?? "", startingUnit: null, startingCoast: null };
+    }
+    const extraUnits: ExtraUnit[] = [];
+    for (const unit of dvar.initialState?.units ?? []) {
+      const provinceId = unit.location.includes("/") ? unit.location.split("/")[0] : unit.location;
+      const homeNation = scNationMap[provinceId];
+      if (homeNation && homeNation === unit.nation && homeNations[provinceId]) {
+        homeNations[provinceId] = {
+          ...homeNations[provinceId],
+          startingUnit: unit.type === "Army" ? "army" : "fleet",
+          startingCoast: unit.location.includes("/") ? unit.location : null,
+        };
+      } else {
+        extraUnits.push({
+          id: crypto.randomUUID(),
+          province: provinceId,
+          nation: unit.nation,
+          unit: unit.type === "Army" ? "army" : "fleet",
+          coast: unit.location.includes("/") ? unit.location : null,
+        });
+      }
     }
     setHomeNationsData(homeNations);
+    setExtraUnitsData(extraUnits.length > 0 ? extraUnits : null);
 
     // dominance rules: start from the auto-detected structure, then overlay enabled rules
     const baseDR = buildInitialDominanceRules(adjacencyMap, provinces);
@@ -331,6 +344,7 @@ export function DvarCreator() {
     setNations(null);
     setProvincesData(null);
     setHomeNationsData(null);
+    setExtraUnitsData(null);
     setAdjacenciesData(null);
     setDominanceRulesData(null);
     setPhaseProgressionData(null);
@@ -418,8 +432,9 @@ export function DvarCreator() {
     setStep("home-nations");
   };
 
-  const handleHomeNationsSubmit = (data: HomeNationsData) => {
-    setHomeNationsData(data);
+  const handleHomeNationsSubmit = (data: HomeNationsFormValues) => {
+    setHomeNationsData(data.assignments);
+    setExtraUnitsData(data.extraUnits);
     setStep("adjacencies");
   };
 
@@ -459,6 +474,7 @@ export function DvarCreator() {
     let currentNations = nations;
     let currentProvincesData = provincesData;
     let currentHomeNationsData = homeNationsData;
+    let currentExtraUnitsData = extraUnitsData;
     let currentAdjacenciesData = adjacenciesData;
     let currentDominanceRulesData = dominanceRulesData;
     let currentPhaseProgressionData = phaseProgressionData;
@@ -501,7 +517,9 @@ export function DvarCreator() {
         }),
       };
     } else if (step === "home-nations" && homeNationsRef.current) {
-      currentHomeNationsData = homeNationsRef.current.getValues();
+      const vals = homeNationsRef.current.getValues();
+      currentHomeNationsData = vals.assignments;
+      currentExtraUnitsData = vals.extraUnits;
     } else if (step === "adjacencies" && adjacenciesRef.current) {
       currentAdjacenciesData = adjacenciesRef.current.getValues();
     } else if (step === "dominance-rules" && dominanceRulesRef.current) {
@@ -517,7 +535,7 @@ export function DvarCreator() {
     const output = assemblePartialDvar(
       currentBasicInfo, currentNations, currentProvincesData, currentHomeNationsData,
       currentAdjacenciesData, currentDominanceRulesData, currentPhaseProgressionData,
-      currentVictoryConditionsData, currentAdjudicationModifiersData,
+      currentVictoryConditionsData, currentAdjudicationModifiersData, currentExtraUnitsData,
     );
     const id = basicInfo?.id?.trim() || fileName?.replace(/\.d\.svg$/i, "") || "draft";
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
@@ -764,8 +782,10 @@ export function DvarCreator() {
                 ref={homeNationsRef}
                 svgContent={svgContent}
                 scProvinces={provincesData.provinces.filter(p => p.supplyCenter)}
+                allProvinces={provincesData.provinces}
                 nations={nations}
                 defaultValues={homeNationsData}
+                defaultExtraUnits={extraUnitsData ?? undefined}
                 onSubmit={handleHomeNationsSubmit}
               />
             )}
@@ -854,6 +874,7 @@ export function DvarCreator() {
                 nations={nations}
                 provincesData={provincesData}
                 homeNationsData={homeNationsData}
+                extraUnits={extraUnitsData ?? []}
                 adjacenciesData={adjacenciesData}
                 dominanceRulesData={dominanceRulesData}
                 phaseProgressionData={phaseProgressionData}
