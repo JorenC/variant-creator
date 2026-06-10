@@ -173,6 +173,59 @@ describe("assembleDvar", () => {
     }
   });
 
+  describe("startingUnit: null (N — no starting unit)", () => {
+    it("omits the unit from initialState.units when startingUnit is null", () => {
+      const input = baseInput();
+      input.homeNationsData = {
+        par: { nation: "fra", startingUnit: null, startingCoast: null },
+      };
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const initialState = out.initialState as Record<string, unknown>;
+      expect(initialState.units).toEqual([]);
+    });
+
+    it("still emits the supply center in initialState.supplyCenters when startingUnit is null", () => {
+      const input = baseInput();
+      input.homeNationsData = {
+        par: { nation: "fra", startingUnit: null, startingCoast: null },
+      };
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const initialState = out.initialState as Record<string, unknown>;
+      expect(initialState.supplyCenters).toEqual([{ nation: "fra", province: "par" }]);
+    });
+
+    it("still sets homeNation on the province when startingUnit is null", () => {
+      const input = baseInput();
+      input.homeNationsData = {
+        par: { nation: "fra", startingUnit: null, startingCoast: null },
+      };
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const provinces = out.provinces as Array<Record<string, unknown>>;
+      expect(provinces[0].homeNation).toBe("fra");
+    });
+
+    it("only omits the unit-less province from units while keeping provinces with units", () => {
+      const input = baseInput();
+      input.provincesData = {
+        provinces: [
+          { id: "par", name: "Paris", type: "land", supplyCenter: true, namedCoasts: [] },
+          { id: "bre", name: "Brest", type: "coastal", supplyCenter: true, namedCoasts: [] },
+        ],
+      };
+      input.homeNationsData = {
+        par: { nation: "fra", startingUnit: "army", startingCoast: null },
+        bre: { nation: "fra", startingUnit: null, startingCoast: null },
+      };
+      const out = assembleDvar(input) as Record<string, unknown>;
+      const initialState = out.initialState as Record<string, unknown>;
+      expect(initialState.units).toEqual([{ nation: "fra", type: "Army", location: "par" }]);
+      expect(initialState.supplyCenters).toEqual([
+        { nation: "fra", province: "par" },
+        { nation: "fra", province: "bre" },
+      ]);
+    });
+  });
+
   it("excludes neutral / empty owners from units and supply centers", () => {
     const input = baseInput();
     input.homeNationsData = {
