@@ -167,12 +167,15 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                       </SelectContent>
                     </Select>
 
-                    {/* A / F toggle */}
+                    {/* A / F / N toggle */}
                     <div className="flex shrink-0 items-center gap-0.5 rounded-md border px-1.5 py-1">
-                      {(["army", "fleet"] as const).map(unit => {
+                      {(["army", "fleet", "none"] as const).map(unit => {
                         const disableFleet = unit === "fleet" && isLand;
                         const disabled = isEmpty || disableFleet;
-                        const active = entry.startingUnit === unit;
+                        const active =
+                          unit === "none"
+                            ? !isEmpty && entry.startingUnit === null
+                            : entry.startingUnit === unit;
                         return (
                           <button
                             key={unit}
@@ -183,7 +186,7 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                                 ...prev,
                                 [province.id]: {
                                   ...prev[province.id],
-                                  startingUnit: active ? null : unit,
+                                  startingUnit: unit === "none" ? null : active ? null : unit,
                                   startingCoast: null,
                                 },
                               }))
@@ -197,7 +200,7 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                                 : "text-muted-foreground hover:text-foreground"
                             )}
                           >
-                            {unit === "army" ? "A" : "F"}
+                            {unit === "army" ? "A" : unit === "fleet" ? "F" : "N"}
                           </button>
                         );
                       })}
