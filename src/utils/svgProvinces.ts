@@ -99,6 +99,45 @@ export function extractLayerPaths(
   return paths;
 }
 
+/**
+ * Returns the labels/ids of groups in the given layer whose children are
+ * mixed — some have inkscape:label and some do not. These groups will be
+ * expanded (not merged) by buildDsvgOutput, which may be unexpected.
+ */
+export function detectAmbiguousGroups(
+  svgContent: string,
+  layerKey: string
+): string[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const root = doc.documentElement;
+
+  const path = layerKey.replace(/^root-/, "").split("-").map(Number);
+  let el: Element = root;
+  for (const index of path) {
+    const child = el.children[index];
+    if (!child) return [];
+    el = child;
+  }
+
+  const ambiguous: string[] = [];
+  for (const child of Array.from(el.children)) {
+    if (child.tagName.toLowerCase() !== "g") continue;
+    const grandchildren = Array.from(child.children);
+    const labeledCount = grandchildren.filter(
+      c => c.getAttribute("inkscape:label") !== null
+    ).length;
+    if (labeledCount > 0 && labeledCount < grandchildren.length) {
+      const id =
+        child.getAttribute("inkscape:label") ??
+        child.getAttribute("id") ??
+        "(unnamed)";
+      ambiguous.push(id);
+    }
+  }
+  return ambiguous;
+}
+
 export function extractProvinces(
   svgContent: string,
   provincesKey: string | null

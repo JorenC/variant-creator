@@ -1,5 +1,5 @@
 import type { SvgTreeNode } from "@/utils/svgTree";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 import { resolveTransforms } from "@/utils/svgTransform";
 
 const INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape";
@@ -22,19 +22,64 @@ function getElementByKey(root: Element, key: string): Element | null {
   return el;
 }
 
-function flattenInkscapeSubLayers(el: Element): void {
+// Matches typical province/coast IDs (2–5 letters/digits, optional /2–4 suffix).
+const PROVINCE_ID_RE = /^[a-zA-Z0-9]{2,5}(\/[a-zA-Z0-9]{2,4})?$/;
+
+// Returns true if any direct child of `el` has a user-assigned inkscape:label
+// (i.e. the label differs from the auto-generated id Inkscape copies to it).
+function hasNamedChildren(el: Element): boolean {
+  for (const child of Array.from(el.children)) {
+    const label = child.getAttribute("inkscape:label");
+    if (label && label !== child.getAttribute("id")) return true;
+  }
+  return false;
+}
+
+// Flattens Inkscape sub-layer groups into direct children of `el`.
+//
+// When `force` is false (provinces/named-coasts): a <g> with inkscape:label is
+// only flattened if its children carry their own user-assigned labels, meaning
+// it is an organisational sub-layer (e.g. "mountains" containing "kie"/"par").
+// A <g> whose children have no user-assigned labels is treated as a composite
+// shape (e.g. "kie" island + mainland) and left intact for
+// flattenGroupsToCompoundPaths to merge later.  Warnings are emitted for
+// ambiguous cases where detection is uncertain.
+//
+// When `force` is true (unit-positions): all <g> sub-layers are always
+// flattened regardless of child labels, because unit-position markers are
+// single points — composite groups do not apply there.
+function flattenInkscapeSubLayers(el: Element, force = false, warnings?: string[]): void {
   const toRemove: Element[] = [];
   for (const child of Array.from(el.children)) {
-    if (
-      child.tagName.toLowerCase() === "g" &&
-      (child.getAttribute("inkscape:groupmode") === "layer" ||
-        child.getAttribute("inkscape:label") !== null)
-    ) {
-      flattenInkscapeSubLayers(child);
+    if (child.tagName.toLowerCase() !== "g") continue;
+
+    const isLayer = child.getAttribute("inkscape:groupmode") === "layer";
+    const label = child.getAttribute("inkscape:label");
+    const named = label !== null && hasNamedChildren(child);
+
+    const shouldFlatten = isLayer || force || named;
+
+    if (shouldFlatten) {
+      if (warnings && label !== null && named && PROVINCE_ID_RE.test(label)) {
+        // Province-like label but has named children: treating as sub-layer,
+        // which may not be what the user intended.
+        warnings.push(
+          `Group "${label}" looks like a province ID but contains labeled sub-elements — treating as a sub-layer. ` +
+          `If "${label}" is a composite shape (e.g. mainland + island), remove the labels from its child paths.`
+        );
+      }
+      flattenInkscapeSubLayers(child, force, warnings);
       for (const gc of Array.from(child.children)) {
         el.insertBefore(gc, child);
       }
       toRemove.push(child);
+    } else if (label !== null && !force && warnings && !PROVINCE_ID_RE.test(label)) {
+      // Non-province-like label with no named children: treating as composite
+      // shape, but long/descriptive names are more likely sub-layers.
+      warnings.push(
+        `Group "${label}" has no labeled children — treating as a composite shape. ` +
+        `If it is a sub-layer containing separate provinces, add inkscape:label to its child elements.`
+      );
     }
   }
   for (const removed of toRemove) {
@@ -273,7 +318,9 @@ function relabelByInkscape(layer: Element): void {
 export function buildDsvgOutput(
   svgContent: string,
   assignments: LayerAssignments,
-  unitPositionCodes: Record<string, string> = {}
+  unitPositionCodes: Record<string, string> = {},
+  namedCoastEntries: Array<{ svgId: string; parentProvince: string; coastAbbr: string }> = [],
+  warnings?: string[]
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
@@ -298,16 +345,17 @@ export function buildDsvgOutput(
   };
 
   const provincesEl = cloneByKey(assignments.provinces);
-  if (provincesEl) flattenInkscapeSubLayers(provincesEl);
+  if (provincesEl) flattenInkscapeSubLayers(provincesEl, false, warnings);
   const namedCoastsEl = cloneByKey(assignments.namedCoasts);
   const unitPositionsEl = cloneByKey(assignments.unitPositions);
   const provinceNamesEl = cloneByKey(assignments.provinceNames);
   const bordersEl = cloneByKey(assignments.borders);
-  const supplyCentersEl = cloneByKey(assignments.supplyCenters);
 
   // 4. Classify sibling groups as background/foreground
+  // scForegroundNodes is kept separate so SC is always appended last (top of foreground).
   const backgroundNodes: Element[] = [];
   const foregroundNodes: Element[] = [];
+  const scForegroundNodes: Element[] = [];
 
   if (assignments.provinces) {
     const provincesPath = assignments.provinces
@@ -333,7 +381,6 @@ export function buildDsvgOutput(
         assignments.unitPositions,
         assignments.provinceNames,
         assignments.borders,
-        assignments.supplyCenters,
       ]) {
         if (!key) continue;
         const kPath = key.replace(/^root-/, "").split("-").map(Number);
@@ -343,11 +390,23 @@ export function buildDsvgOutput(
         assignedLocalIndices.add(kPath[kPath.length - 1]);
       }
 
+      let scLocalIdx: number | null = null;
+      if (assignments.supplyCenters) {
+        const scPath = assignments.supplyCenters.replace(/^root-/, "").split("-").map(Number);
+        if (scPath.length === provincesPath.length) {
+          const scParent = scPath.slice(0, -1);
+          if (scParent.every((v, j) => v === parentPath[j])) {
+            scLocalIdx = scPath[scPath.length - 1];
+          }
+        }
+      }
+
       Array.from(parentEl.children).forEach((child, i) => {
         if (child.tagName.toLowerCase() !== "g") return;
         if (assignedLocalIndices.has(i)) return;
         const clone = child.cloneNode(true) as Element;
         if (i < provincesLocalIdx) backgroundNodes.push(clone);
+        else if (i === scLocalIdx) scForegroundNodes.push(clone);
         else foregroundNodes.push(clone);
       });
     }
@@ -370,7 +429,7 @@ export function buildDsvgOutput(
 
   // 6. Build clean output document in canonical layer order:
   //    background → provinces → named-coasts → unit-positions →
-  //    province-names → borders → foreground (supply-centers nested inside)
+  //    province-names → borders → foreground (supply-centers live inside foreground)
   while (root.firstChild) root.removeChild(root.firstChild);
   headerNodes.forEach(n => root.appendChild(n));
 
@@ -396,9 +455,24 @@ export function buildDsvgOutput(
   const ncLayer = namedCoastsEl ?? makeLayerGroup(doc, "named-coasts");
   ncLayer.setAttribute("id", "named-coasts");
   ncLayer.setAttribute("style", "display:none");
+  // Hoist Inkscape sub-layer groups into direct children before processing.
+  // Uses the labeled-children heuristic: a <g> is only flattened if its children
+  // carry user-assigned labels (sub-layer), otherwise kept as a composite shape
+  // for flattenGroupsToCompoundPaths to merge below.
+  flattenInkscapeSubLayers(ncLayer, false, warnings);
   convertShapesToPaths(doc, ncLayer);
   // Same label promotion for named-coast paths (e.g. "mor/wc").
   relabelByInkscape(ncLayer);
+  // Apply user-assigned parentProvince/coastAbbr IDs from the NamedCoastEditor step.
+  // Mirrors the unitPositionCodes rename loop above. Uses inkscape:label ?? id as the
+  // lookup key (matching what extractProvinces shows users in the editor).
+  for (const child of Array.from(ncLayer.children)) {
+    const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
+    const entry = namedCoastEntries.find(e => e.svgId === svgId);
+    if (entry?.parentProvince && entry?.coastAbbr) {
+      child.setAttribute("id", `${entry.parentProvince}/${entry.coastAbbr}`);
+    }
+  }
   // Same group-flattening for named coasts.
   flattenGroupsToCompoundPaths(doc, ncLayer);
   root.appendChild(ncLayer);
@@ -406,6 +480,9 @@ export function buildDsvgOutput(
   const upLayer = unitPositionsEl ?? makeLayerGroup(doc, "unit-positions");
   upLayer.setAttribute("id", "unit-positions");
   upLayer.setAttribute("style", "display:none");
+  // Unit-position markers are single points; composite groups don't apply here,
+  // so always force-flatten to ensure all ellipses/circles reach the top level.
+  flattenInkscapeSubLayers(upLayer, true);
   for (const child of Array.from(upLayer.children)) {
     // Prefer inkscape:label (Inkscape files) over id (Figma/generic files) when
     // looking up the user-assigned code so the rename works for both sources.
@@ -469,12 +546,8 @@ export function buildDsvgOutput(
 
   const fg = makeLayerGroup(doc, "foreground");
   fg.setAttribute("style", "display:inline");
-  if (supplyCentersEl) {
-    supplyCentersEl.setAttribute("id", "supply-centers");
-    supplyCentersEl.setAttribute("style", "display:inline");
-    fg.appendChild(supplyCentersEl);
-  }
   foregroundNodes.forEach(el => fg.appendChild(el));
+  scForegroundNodes.forEach(el => fg.appendChild(el));
   root.appendChild(fg);
 
   // 7. Strip all Inkscape/sodipodi attributes from the whole tree

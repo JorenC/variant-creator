@@ -1,5 +1,5 @@
 import paper from "paper";
-import type { Position } from "@/types/variant";
+import type { Position } from "@/types/geometry";
 
 paper.setup(new paper.Size(1, 1));
 

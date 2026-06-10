@@ -10,7 +10,7 @@ import { UnitPositionEditor } from "@/components/dsvg/UnitPositionEditor";
 import { DsvgExport } from "@/components/dsvg/DsvgExport";
 import { parseSvgTree, flattenTree, validateAnySvg } from "@/utils/svgTree";
 import type { SvgTreeNode } from "@/utils/svgTree";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 import type { LayerPreviewHandle } from "@/components/dsvg/LayerPreview";
 import type { NamedCoastEditorHandle } from "@/components/dsvg/NamedCoastEditor";
 import type { UnitPositionEditorHandle } from "@/components/dsvg/UnitPositionEditor";
@@ -86,6 +86,7 @@ export function DSvgCreator() {
     {}
   );
   const [unitPositionCodes, setUnitPositionCodes] = useState<Record<string, string>>({});
+  const [namedCoastEntries, setNamedCoastEntries] = useState<NamedCoastEntry[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const layerPreviewRef = useRef<LayerPreviewHandle>(null);
@@ -113,6 +114,7 @@ export function DSvgCreator() {
     setAssignments(autoDetectAssignments(parsed));
     setProvinceAbbrs({});
     setUnitPositionCodes({});
+    setNamedCoastEntries([]);
     setStep("assign");
   };
 
@@ -137,6 +139,7 @@ export function DSvgCreator() {
     setAssignments(DEFAULT_ASSIGNMENTS);
     setProvinceAbbrs({});
     setUnitPositionCodes({});
+    setNamedCoastEntries([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -154,6 +157,7 @@ export function DSvgCreator() {
       return;
     }
     if (step === "named-coasts") {
+      setNamedCoastEntries(namedCoastEditorRef.current?.getData() ?? []);
       setStep("unit-positions");
       return;
     }
@@ -272,6 +276,7 @@ export function DSvgCreator() {
                 svgContent={svgContent}
                 assignments={assignments}
                 provinceAbbrs={provinceAbbrs}
+                namedCoastEntries={namedCoastEntries}
               />
             )}
 
@@ -280,6 +285,7 @@ export function DSvgCreator() {
                 svgContent={svgContent}
                 assignments={assignments}
                 unitPositionCodes={unitPositionCodes}
+                namedCoastEntries={namedCoastEntries}
                 tree={tree}
                 fileName={fileName ?? "map.svg"}
               />

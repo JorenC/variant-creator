@@ -8,17 +8,89 @@ import { buildDsvgOutput, buildVisibilityPreviewSvg } from "@/utils/svgBuild";
 import { analyzeSvgFonts, embedFonts } from "@/utils/fontEmbed";
 import type { SvgFontInfo } from "@/utils/fontEmbed";
 import type { SvgTreeNode } from "@/utils/svgTree";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 
 interface DsvgExportProps {
   svgContent: string;
   assignments: LayerAssignments;
   unitPositionCodes: Record<string, string>;
+  namedCoastEntries: NamedCoastEntry[];
   tree: SvgTreeNode[];
   fileName: string;
 }
 
-export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, fileName }: DsvgExportProps) {
+// Checks that required layers are direct children of the root <svg> element,
+// matching what the diplicity-react dsvgParser.findLayer() expects.
+function validateDsvgStructure(svgContent: string): string[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const errors: string[] = [];
+
+  if (doc.querySelector("parsererror")) {
+    return ["Output SVG is not valid XML."];
+  }
+
+  const root = doc.documentElement;
+  if (root.tagName.toLowerCase() !== "svg") {
+    return ["Output root element is not <svg>."];
+  }
+  if (!root.getAttribute("viewBox")) {
+    errors.push("Output SVG is missing a viewBox attribute.");
+  }
+
+  const rootLayerIds = new Set(
+    Array.from(root.children)
+      .filter(el => el.tagName.toLowerCase() === "g")
+      .map(el => el.getAttribute("id"))
+      .filter((id): id is string => id !== null)
+  );
+
+  for (const required of ["provinces", "unit-positions"]) {
+    if (!rootLayerIds.has(required)) {
+      errors.push(`Layer <g id="${required}"> is missing as a direct child of <svg>.`);
+    }
+  }
+
+  const scEl = doc.getElementById("supply-centers");
+  if (scEl) {
+    const fg = doc.getElementById("foreground");
+    if (!fg || !fg.contains(scEl)) {
+      errors.push(`Layer <g id="supply-centers"> exists but is not inside <g id="foreground">.`);
+    }
+  }
+
+  return errors;
+}
+
+function validatePositionConsistency(svgContent: string): { missing: string[]; unknown: string[] } {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+
+  const shapeIds = new Set<string>();
+  for (const layer of [doc.getElementById("provinces"), doc.getElementById("named-coasts")]) {
+    if (!layer) continue;
+    for (const el of Array.from(layer.querySelectorAll("path"))) {
+      const id = el.getAttribute("id");
+      if (id) shapeIds.add(id);
+    }
+  }
+
+  const circleIds = new Set<string>();
+  const upLayer = doc.getElementById("unit-positions");
+  if (upLayer) {
+    for (const el of Array.from(upLayer.querySelectorAll("circle"))) {
+      const id = el.getAttribute("id");
+      if (id) circleIds.add(id);
+    }
+  }
+
+  return {
+    missing: [...shapeIds].filter(id => !circleIds.has(id)).sort(),
+    unknown: [...circleIds].filter(id => !shapeIds.has(id)).sort(),
+  };
+}
+
+export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCoastEntries, tree, fileName }: DsvgExportProps) {
   const navigate = useNavigate();
   const displayNodes = useMemo(
     () => tree.flatMap(n => (n.children.length > 0 ? n.children : [n])),
@@ -92,6 +164,11 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
   const [fontInfo, setFontInfo] = useState<SvgFontInfo | null>(null);
   const [uploadedFonts, setUploadedFonts] = useState<Map<string, ArrayBuffer>>(new Map());
   const [isDownloading, setIsDownloading] = useState(false);
+  const [structureErrors, setStructureErrors] = useState<string[]>([]);
+  const [positionErrors, setPositionErrors] = useState<{ missing: string[]; unknown: string[] } | null>(null);
+  const [buildWarnings, setBuildWarnings] = useState<string[]>([]);
+  const [embedFailed, setEmbedFailed] = useState(false);
+  const preEmbedOutputRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!embedFontsEnabled) {
@@ -136,24 +213,60 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
       : undefined;
   }, [svgContent]);
 
+  const triggerDownload = (output: string) => {
+    const baseName = fileName.replace(/\.svg$/i, "");
+    const blob = new Blob([output], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${baseName}.d.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
+    setStructureErrors([]);
+    setPositionErrors(null);
+    setBuildWarnings([]);
+    setEmbedFailed(false);
+    preEmbedOutputRef.current = null;
     try {
-      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes);
-      if (embedFontsEnabled && fontInfo) {
-        output = await embedFonts(output, fontInfo, uploadedFonts);
+      const collectedWarnings: string[] = [];
+      let output = buildDsvgOutput(svgContent, assignments, unitPositionCodes, namedCoastEntries, collectedWarnings);
+
+      const structErrors = validateDsvgStructure(output);
+      if (structErrors.length > 0) {
+        setStructureErrors(structErrors);
+        setBuildWarnings(collectedWarnings);
+        return;
       }
-      const baseName = fileName.replace(/\.svg$/i, "");
-      const blob = new Blob([output], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${baseName}.d.svg`;
-      a.click();
-      URL.revokeObjectURL(url);
+
+      const validation = validatePositionConsistency(output);
+      if (validation.missing.length > 0 || validation.unknown.length > 0) {
+        setPositionErrors(validation);
+        setBuildWarnings(collectedWarnings);
+        return;
+      }
+      setBuildWarnings(collectedWarnings);
+
+      if (embedFontsEnabled && fontInfo) {
+        preEmbedOutputRef.current = output;
+        try {
+          output = await embedFonts(output, fontInfo, uploadedFonts);
+        } catch {
+          setEmbedFailed(true);
+          return;
+        }
+      }
+      triggerDownload(output);
     } finally {
       setIsDownloading(false);
     }
+  };
+
+  const handleDownloadWithoutFonts = () => {
+    if (preEmbedOutputRef.current) triggerDownload(preEmbedOutputRef.current);
   };
 
   // Assigned layers in canonical output order, skipping unassigned ones
@@ -278,6 +391,73 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, tree, f
             </div>
           )}
         </div>
+
+        {buildWarnings.length > 0 && (
+          <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-800 dark:text-yellow-200 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Group detection warnings — review if export looks wrong
+            </div>
+            {buildWarnings.map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        )}
+
+        {structureErrors.length > 0 && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              dSVG structure invalid — the server will reject this file
+            </div>
+            {structureErrors.map((e, i) => <p key={i}>{e}</p>)}
+          </div>
+        )}
+
+        {positionErrors && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Unit-position ID mismatch — the server will reject this file
+            </div>
+            {positionErrors.missing.length > 0 && (
+              <p>
+                <span className="font-semibold">Provinces with no position circle:</span>{" "}
+                {positionErrors.missing.map(id => (
+                  <span key={id} className="font-mono mx-0.5">{id}</span>
+                ))}
+              </p>
+            )}
+            {positionErrors.unknown.length > 0 && (
+              <p>
+                <span className="font-semibold">Position circles with no matching province:</span>{" "}
+                {positionErrors.unknown.map(id => (
+                  <span key={id} className="font-mono mx-0.5">{id}</span>
+                ))}
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              Fix these IDs in your source SVG and re-upload to resolve.
+            </p>
+          </div>
+        )}
+
+        {embedFailed && (
+          <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+            <div className="flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Font embed failed. Try again, or{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={handleDownloadWithoutFonts}
+              >
+                download anyway
+              </button>{" "}
+              to download without embedded fonts.
+            </div>
+          </div>
+        )}
 
         <Button onClick={handleDownload} disabled={isDownloading || fontCheckLoading || fontCheckError}>
           {isDownloading ? (

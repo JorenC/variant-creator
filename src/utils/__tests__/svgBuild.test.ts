@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildDsvgOutput } from "../svgBuild";
-import type { LayerAssignments } from "@/components/dsvg/LayerAssignment";
+import type { LayerAssignments } from "@/types/dsvg";
 
 // SVG structure used in these tests:
 //   root > container > [bg, provinces, named-coasts, unit-positions, fg]
@@ -105,6 +105,229 @@ describe("buildDsvgOutput – Inkscape sodipodi:namedview index shift", () => {
     expect(bgLayer).not.toBeNull();
     // provs should not be a descendant of background
     expect(bgLayer!.querySelector("#provs")).toBeNull();
+  });
+});
+
+// SVG with provinces (root-0) and named-coasts (root-1) at the root level.
+function makeCoastSvg(coastPaths: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="spa" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">${coastPaths}</g>
+</svg>`;
+}
+
+const COAST_ASSIGNMENTS: LayerAssignments = {
+  provinces: "root-0",
+  namedCoasts: "root-1",
+  unitPositions: null,
+  provinceNames: null,
+  borders: null,
+  supplyCenters: null,
+};
+
+describe("buildDsvgOutput – named coast ID renaming", () => {
+  it("renames coast paths to parentProvince/coastAbbr using plain id lookup", () => {
+    const svg = makeCoastSvg(`
+      <path id="spain nc" d="M0 0 L5 0 L5 5 Z"/>
+      <path id="spain sc" d="M5 0 L10 0 L10 5 Z"/>
+    `);
+    const entries = [
+      { svgId: "spain nc", parentProvince: "spa", coastAbbr: "nc" },
+      { svgId: "spain sc", parentProvince: "spa", coastAbbr: "sc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spa/nc");
+    expect(ids).toContain("spa/sc");
+  });
+
+  it("renames coast paths via inkscape:label lookup (Inkscape SVGs)", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"
+      xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+      viewBox="0 0 100 100">
+  <g id="provs"><path id="spa" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">
+    <path id="path11" inkscape:label="spain nc" d="M0 0 L5 0 L5 5 Z"/>
+    <path id="path12" inkscape:label="spain sc" d="M5 0 L10 0 L10 5 Z"/>
+  </g>
+</svg>`;
+    const entries = [
+      { svgId: "spain nc", parentProvince: "spa", coastAbbr: "nc" },
+      { svgId: "spain sc", parentProvince: "spa", coastAbbr: "sc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spa/nc");
+    expect(ids).toContain("spa/sc");
+  });
+
+  it("leaves coast paths with no matching entry unchanged", () => {
+    const svg = makeCoastSvg(`
+      <path id="spain nc" d="M0 0 L5 0 L5 5 Z"/>
+      <path id="unknown coast" d="M5 0 L10 0 L10 5 Z"/>
+    `);
+    const entries = [
+      { svgId: "spain nc", parentProvince: "spa", coastAbbr: "nc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spa/nc");
+    expect(ids).toContain("unknown coast");
+  });
+
+  it("skips entries with empty parentProvince or coastAbbr", () => {
+    const svg = makeCoastSvg(`<path id="spain nc" d="M0 0 L5 0 L5 5 Z"/>`);
+    const entries = [
+      { svgId: "spain nc", parentProvince: "", coastAbbr: "nc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("spain nc");
+    expect(ids).not.toContain("/nc");
+  });
+
+  it("produces no coast elements when namedCoastEntries is empty (existing behaviour)", () => {
+    const svg = makeCoastSvg(`<path id="spain coasts" d="M0 0 L5 0 L5 5 Z"/>`);
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, []);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    // Without entries the original id is preserved unchanged
+    expect(ids).toContain("spain coasts");
+  });
+});
+
+describe("buildDsvgOutput – named coast Inkscape sub-layer flattening", () => {
+  it("expands labeled sub-layer groups into individual coast paths", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"
+      xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+      viewBox="0 0 100 100">
+  <g id="provs"><path id="plu" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">
+    <g id="g1" inkscape:label="Plutarch Coasts">
+      <path id="path1" inkscape:label="plu/sg" d="M0 0 L5 0 L5 5 Z"/>
+      <path id="path2" inkscape:label="plu/ss" d="M5 0 L10 0 L10 5 Z"/>
+    </g>
+  </g>
+</svg>`;
+    const entries = [
+      { svgId: "plu/sg", parentProvince: "plu", coastAbbr: "sg" },
+      { svgId: "plu/ss", parentProvince: "plu", coastAbbr: "ss" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    const ids = Array.from(ncLayer!.children).map(c => c.getAttribute("id"));
+    expect(ids).toContain("plu/sg");
+    expect(ids).toContain("plu/ss");
+    expect(ids).toHaveLength(2);
+  });
+
+  it("merges unlabeled Figma-style groups into compound paths", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="suk" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="coasts">
+    <g id="suk/sc">
+      <path d="M0 0 L5 0 L5 5 Z"/>
+      <path d="M5 0 L10 0 L10 5 Z"/>
+    </g>
+  </g>
+</svg>`;
+    const entries = [
+      { svgId: "suk/sc", parentProvince: "suk", coastAbbr: "sc" },
+    ];
+    const output = buildDsvgOutput(svg, COAST_ASSIGNMENTS, {}, entries);
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const ncLayer = doc.getElementById("named-coasts");
+    expect(ncLayer!.children).toHaveLength(1);
+    expect(ncLayer!.children[0].getAttribute("id")).toBe("suk/sc");
+    expect(ncLayer!.children[0].tagName.toLowerCase()).toBe("path");
+  });
+});
+
+describe("buildDsvgOutput – canonical layer structure (dsvgParser contract)", () => {
+  // These tests enforce that every layer required by diplicity-react's parseDsvg
+  // is a *direct child* of the root <svg> element. parseDsvg uses findLayer()
+  // which only looks at root.children — nested layers are invisible to it.
+  function rootLayers(output: string): Array<{ id: string; style: string | null }> {
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    return Array.from(doc.documentElement.children)
+      .filter(el => el.tagName.toLowerCase() === "g")
+      .map(el => ({ id: el.getAttribute("id") ?? "", style: el.getAttribute("style") }));
+  }
+
+  it("places provinces as a direct root child with display:none", () => {
+    const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
+    const prov = layers.find(l => l.id === "provinces");
+    expect(prov).toBeDefined();
+    expect(prov?.style).toBe("display:none");
+  });
+
+  it("places unit-positions as a direct root child with display:none", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs"><path id="par" d="M0 0 L10 0 L10 10 Z"/></g>
+  <g id="ups"><circle id="par" cx="5" cy="5" r="3"/></g>
+</svg>`;
+    const assignments: LayerAssignments = {
+      ...BASE_ASSIGNMENTS,
+      unitPositions: "root-1",
+    };
+    const layers = rootLayers(buildDsvgOutput(svg, assignments));
+    const up = layers.find(l => l.id === "unit-positions");
+    expect(up).toBeDefined();
+    expect(up?.style).toBe("display:none");
+  });
+
+  it("places supply-centers inside foreground as the top-most layer", () => {
+    // SC and an extra unassigned layer are siblings of provinces (all inside root-0 container).
+    // An extra unassigned layer after SC ensures SC still ends up last in foreground.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="container">
+    <g id="bg"><rect width="100" height="100"/></g>
+    <g id="provs"><path id="par" d="M0 0 L10 0 L10 10 Z"/></g>
+    <g id="scs"><circle id="sc1" cx="5" cy="5" r="3"/></g>
+    <g id="other-fg"><path id="other" d="M50 50 L60 60"/></g>
+  </g>
+</svg>`;
+    const assignments: LayerAssignments = {
+      ...BASE_ASSIGNMENTS,
+      supplyCenters: "root-0-2",
+    };
+    const output = buildDsvgOutput(svg, assignments);
+    const layers = rootLayers(output);
+
+    // Must NOT be a direct root child
+    expect(layers.find(l => l.id === "supply-centers")).toBeUndefined();
+
+    // SC content must appear inside foreground
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const fg = Array.from(doc.documentElement.children).find(
+      el => el.tagName.toLowerCase() === "g" && el.getAttribute("id") === "foreground"
+    );
+    expect(fg?.querySelector("#sc1")).toBeDefined();
+
+    // SC group must be the last child of foreground (rendered on top)
+    const fgChildren = fg ? Array.from(fg.children) : [];
+    expect(fgChildren[fgChildren.length - 1]?.getAttribute("id")).toBe("scs");
+  });
+
+  it("canonical layer order: background → provinces → named-coasts → unit-positions → province-names → borders → foreground", () => {
+    const layers = rootLayers(buildDsvgOutput(makeSvg(""), BASE_ASSIGNMENTS));
+    const ids = layers.map(l => l.id);
+    const order = ["background", "provinces", "named-coasts", "unit-positions", "province-names", "borders", "foreground"];
+    const indices = order.map(id => ids.indexOf(id));
+    for (const [i, id] of order.entries()) {
+      expect(ids).toContain(id);
+      if (i > 0) expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
   });
 });
 
