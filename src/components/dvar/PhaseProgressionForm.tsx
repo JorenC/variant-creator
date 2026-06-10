@@ -27,18 +27,37 @@ export const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, Phase
     const [entries, setEntries] = useState<PhaseProgressionData>(defaultValues);
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
-    useImperativeHandle(ref, () => ({ submit: () => onSubmit(entries), getValues: () => entries }));
+    useImperativeHandle(ref, () => ({
+      getValues: () => entries,
+      submit: () => {
+        const seen = new Set<string>();
+        for (const entry of entries) {
+          const key = `${entry.season}/${entry.type}`;
+          if (seen.has(key)) {
+            setError(`Duplicate phase: "${entry.season} / ${entry.type}" appears more than once. Each season and type combination must be unique.`);
+            return;
+          }
+          seen.add(key);
+        }
+        setError(null);
+        onSubmit(entries);
+      },
+    }));
 
     const updateEntry = <K extends keyof PhaseEntry>(index: number, key: K, value: PhaseEntry[K]) => {
+      setError(null);
       setEntries(prev => prev.map((e, i) => (i === index ? { ...e, [key]: value } : e)));
     };
 
     const removeEntry = (index: number) => {
+      setError(null);
       setEntries(prev => prev.filter((_, i) => i !== index));
     };
 
     const addEntry = () => {
+      setError(null);
       setEntries(prev => [...prev, { season: "Spring", type: "Movement", yearDelta: 0 }]);
     };
 
@@ -144,6 +163,7 @@ export const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, Phase
           Add Phase
         </Button>
 
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
     );
   }
