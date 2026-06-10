@@ -35,6 +35,19 @@ export type HomeNationsData = Record<
   { nation: string; startingUnit: "army" | "fleet" | null; startingCoast: string | null }
 >;
 
+export interface ExtraUnit {
+  id: string;
+  province: string;
+  nation: string;
+  unit: "army" | "fleet" | null;
+  coast: string | null;
+}
+
+export interface HomeNationsFormValues {
+  assignments: HomeNationsData;
+  extraUnits: ExtraUnit[];
+}
+
 export interface DominanceRuleEntry {
   enabled: boolean;
   provinceOccupier: string; // nationId | "neutral" | "empty"
@@ -136,6 +149,7 @@ export interface AssembleDvarInput {
   nations: Array<{ id: string; name: string; color: string }>;
   provincesData: ProvincesFormValues;
   homeNationsData: HomeNationsData;
+  extraUnits: ExtraUnit[];
   adjacenciesData: DvarAdjacencyMap;
   dominanceRulesData: DominanceRulesData;
   phaseProgressionData: PhaseProgressionData;

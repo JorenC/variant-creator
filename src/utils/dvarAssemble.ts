@@ -9,6 +9,7 @@ import type { DvarAdjacencyMap } from "@/utils/dvarAdjacency";
 import type {
   AssembleDvarInput,
   DominanceRulesData,
+  ExtraUnit,
   PhaseProgressionData,
   ProvincesFormValues,
   VictoryConditionsData,
@@ -85,6 +86,7 @@ export function assembleDvar({
   nations,
   provincesData,
   homeNationsData,
+  extraUnits,
   adjacenciesData,
   dominanceRulesData,
   phaseProgressionData,
@@ -118,13 +120,23 @@ export function assembleDvar({
     }))
   );
 
-  const units = Object.entries(homeNationsData)
+  const homeUnits = Object.entries(homeNationsData)
     .filter(([, v]) => v.startingUnit !== null && v.nation && v.nation !== "" && v.nation !== "neutral")
     .map(([provinceId, v]) => ({
       nation: v.nation,
       type: v.startingUnit === "army" ? "Army" : "Fleet",
       location: v.startingUnit === "fleet" && v.startingCoast ? v.startingCoast : provinceId,
     }));
+
+  const extraUnitsList = (extraUnits ?? [])
+    .filter(eu => eu.province && eu.nation && eu.unit && eu.nation !== "neutral")
+    .map(eu => ({
+      nation: eu.nation,
+      type: eu.unit === "army" ? "Army" : "Fleet",
+      location: eu.unit === "fleet" && eu.coast ? eu.coast : eu.province,
+    }));
+
+  const units = [...homeUnits, ...extraUnitsList];
 
   const supplyCenters = Object.entries(homeNationsData)
     .filter(([, v]) => v.nation && v.nation !== "" && v.nation !== "neutral")
@@ -191,12 +203,14 @@ export function assemblePartialDvar(
   phaseProgressionData: PhaseProgressionData | null,
   victoryConditionsData: VictoryConditionsData | null,
   adjudicationModifiersData: string[] | null,
+  extraUnits: ExtraUnit[] | null,
 ): Record<string, unknown> {
   return assembleDvar({
     basicInfo: basicInfo ?? { id: "", name: "", description: "", author: "", startYear: 1901, rules: "" },
     nations: nations ?? [],
     provincesData: provincesData ?? { provinces: [] },
     homeNationsData: homeNationsData ?? {},
+    extraUnits: extraUnits ?? [],
     adjacenciesData: adjacenciesData ?? {},
     dominanceRulesData: dominanceRulesData ?? {},
     phaseProgressionData: phaseProgressionData ?? [],
