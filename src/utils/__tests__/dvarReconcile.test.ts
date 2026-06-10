@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeMismatches, applyIdRemapping } from "../dvarReconcile";
+import { computeMismatches, applyIdRemapping, collectPreFillWarnings } from "../dvarReconcile";
 import type { DvarJson } from "@/types/dvar";
 
 describe("computeMismatches", () => {
@@ -101,5 +101,148 @@ describe("applyIdRemapping", () => {
 
     expect(result.namedCoasts?.[0].id).toBe("spa/nc");
     expect(result.initialState?.units?.[0].location).toBe("spa/nc");
+  });
+});
+
+describe("collectPreFillWarnings", () => {
+  it("returns no warnings for a clean dvar", () => {
+    const dvar: DvarJson = {
+      provinces: [
+        { id: "lon", name: "London", type: "coastal", supplyCenter: true, adjacencies: [] },
+      ],
+      initialState: {
+        supplyCenters: [{ nation: "England", province: "lon" }],
+        units: [{ nation: "England", type: "Fleet", location: "lon" }],
+      },
+      adjudicationModifiers: ["allow-builds-in-non-home-centers"],
+    };
+
+    expect(collectPreFillWarnings(dvar)).toEqual([]);
+  });
+
+  it("returns no warnings when there are no units or modifiers", () => {
+    const dvar: DvarJson = {};
+
+    expect(collectPreFillWarnings(dvar)).toEqual([]);
+  });
+
+  it("warns when two units compete for the same home-nation SC province", () => {
+    const dvar: DvarJson = {
+      initialState: {
+        supplyCenters: [{ nation: "England", province: "lon" }],
+        units: [
+          { nation: "England", type: "Army", location: "lon" },
+          { nation: "England", type: "Fleet", location: "lon" },
+        ],
+      },
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/lon/);
+    expect(warnings[0]).toMatch(/2/);
+    expect(warnings[0]).toMatch(/1 dropped/);
+  });
+
+  it("warns once per province, counting all duplicates", () => {
+    const dvar: DvarJson = {
+      initialState: {
+        supplyCenters: [{ nation: "France", province: "par" }],
+        units: [
+          { nation: "France", type: "Army", location: "par" },
+          { nation: "France", type: "Army", location: "par" },
+          { nation: "France", type: "Army", location: "par" },
+        ],
+      },
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/par/);
+    expect(warnings[0]).toMatch(/3/);
+    expect(warnings[0]).toMatch(/2 dropped/);
+  });
+
+  it("does not warn for a unit whose nation differs from the SC nation (goes to extraUnits, not dropped)", () => {
+    const dvar: DvarJson = {
+      initialState: {
+        supplyCenters: [{ nation: "England", province: "lon" }],
+        units: [
+          { nation: "England", type: "Fleet", location: "lon" },
+          { nation: "France", type: "Army", location: "lon" },
+        ],
+      },
+    };
+
+    expect(collectPreFillWarnings(dvar)).toEqual([]);
+  });
+
+  it("does not warn for a unit at a non-SC province (goes to extraUnits, not dropped)", () => {
+    const dvar: DvarJson = {
+      initialState: {
+        supplyCenters: [{ nation: "England", province: "lon" }],
+        units: [
+          { nation: "England", type: "Fleet", location: "lon" },
+          { nation: "England", type: "Army", location: "yor" },
+        ],
+      },
+    };
+
+    expect(collectPreFillWarnings(dvar)).toEqual([]);
+  });
+
+  it("warns about duplicate home-nation units on a coast location (slash notation)", () => {
+    const dvar: DvarJson = {
+      initialState: {
+        supplyCenters: [{ nation: "Russia", province: "stp" }],
+        units: [
+          { nation: "Russia", type: "Fleet", location: "stp/nc" },
+          { nation: "Russia", type: "Fleet", location: "stp/sc" },
+        ],
+      },
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/stp/);
+  });
+
+  it("warns for an unknown adjudication modifier", () => {
+    const dvar: DvarJson = {
+      adjudicationModifiers: ["ScLevelPayoffs"],
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/ScLevelPayoffs/);
+  });
+
+  it("warns for each unknown modifier independently", () => {
+    const dvar: DvarJson = {
+      adjudicationModifiers: ["ScLevelPayoffs", "ChaosDiplomacy", "allow-builds-in-non-home-centers"],
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.some(w => w.includes("ScLevelPayoffs"))).toBe(true);
+    expect(warnings.some(w => w.includes("ChaosDiplomacy"))).toBe(true);
+  });
+
+  it("combines unit and modifier warnings in the same result", () => {
+    const dvar: DvarJson = {
+      initialState: {
+        supplyCenters: [{ nation: "England", province: "lon" }],
+        units: [
+          { nation: "England", type: "Army", location: "lon" },
+          { nation: "England", type: "Fleet", location: "lon" },
+        ],
+      },
+      adjudicationModifiers: ["UnknownRule"],
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.some(w => w.includes("lon"))).toBe(true);
+    expect(warnings.some(w => w.includes("UnknownRule"))).toBe(true);
   });
 });

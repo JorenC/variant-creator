@@ -17,6 +17,47 @@ import type {
   ReconcileMismatches,
 } from "@/types/dvar";
 
+const KNOWN_MODIFIERS = new Set(["allow-builds-in-non-home-centers"]);
+
+/**
+ * Checks a dvar for data that will be silently dropped during pre-fill and returns a
+ * human-readable description of each dropped item.
+ */
+export function collectPreFillWarnings(dvar: DvarJson): string[] {
+  const warnings: string[] = [];
+
+  // Duplicate home-nation starting units: the pre-fill loop overwrites homeNations[province]
+  // on each match, so all but the last unit for the same home SC province are dropped.
+  const scNationMap = Object.fromEntries(
+    (dvar.initialState?.supplyCenters ?? []).map(sc => [sc.province, sc.nation])
+  );
+  const homeUnitCount = new Map<string, number>();
+  for (const unit of dvar.initialState?.units ?? []) {
+    const provinceId = unit.location.includes("/") ? unit.location.split("/")[0] : unit.location;
+    const homeNation = scNationMap[provinceId];
+    if (homeNation && homeNation === unit.nation) {
+      homeUnitCount.set(provinceId, (homeUnitCount.get(provinceId) ?? 0) + 1);
+    }
+  }
+  for (const [province, count] of homeUnitCount) {
+    if (count > 1) {
+      warnings.push(
+        `${province}: ${count} starting units for the same home center — only the last is kept, ${count - 1} dropped`
+      );
+    }
+  }
+
+  // Unsupported adjudication modifiers: the form only renders known modifiers, so anything
+  // else is silently dropped when the user navigates through that step.
+  for (const mod of dvar.adjudicationModifiers ?? []) {
+    if (!KNOWN_MODIFIERS.has(mod)) {
+      warnings.push(`Adjudication modifier "${mod}" is not supported and will be dropped`);
+    }
+  }
+
+  return warnings;
+}
+
 /** Compares dVAR IDs against dSVG IDs, reporting which exist in only one of the two. */
 export function computeMismatches(dvar: DvarJson, dsvg: ParsedDsvg): ReconcileMismatches {
   const dvarProvinceIds = new Set((dvar.provinces ?? []).map(p => p.id));
