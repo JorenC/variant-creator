@@ -4,6 +4,8 @@ import {
   buildInitialProvinces,
   buildInitialDominanceRules,
   assembleDvar,
+  orderTransitionsIntoChain,
+  reconcileHomeNationsWithProvinces,
 } from "../dvarAssemble";
 import { DvarSchema } from "../dvarSchema";
 import type { AssembleDvarInput } from "@/types/dvar";
@@ -352,5 +354,94 @@ describe("assembleDvar", () => {
     const initialState = out.initialState as Record<string, unknown>;
     expect(initialState.units).toEqual([]);
     expect(initialState.supplyCenters).toEqual([]);
+  });
+});
+
+describe("assembleDvar – dominance occupier casing", () => {
+  it('exports the internal "neutral" sentinel as "Neutral"', () => {
+    const input = baseInput();
+    input.dominanceRulesData = {
+      bur: { enabled: true, provinceOccupier: "neutral", conditions: { par: "neutral" } },
+    };
+    const out = assembleDvar(input) as { dominanceRules?: Array<{ nation: string; dependencies: Array<{ nation: string }> }> };
+    expect(out.dominanceRules![0].nation).toBe("Neutral");
+    expect(out.dominanceRules![0].dependencies[0].nation).toBe("Neutral");
+  });
+});
+
+describe("orderTransitionsIntoChain", () => {
+  const t = (fs: string, ft: string, ts: string, tt: string, delta = 0) => ({
+    from: { season: fs, type: ft },
+    to: { season: ts, type: tt, yearDelta: delta },
+  });
+
+  it("reorders shuffled transitions into their from→to chain", () => {
+    const shuffled = [
+      t("Fall", "Movement", "Fall", "Adjustment"),
+      t("Spring", "Movement", "Fall", "Movement"),
+      t("Fall", "Adjustment", "Spring", "Movement", 1),
+    ];
+    const ordered = orderTransitionsIntoChain(shuffled, { season: "Spring", type: "Movement" });
+    expect(ordered.map(x => `${x.from.season} ${x.from.type}`)).toEqual([
+      "Spring Movement",
+      "Fall Movement",
+      "Fall Adjustment",
+    ]);
+  });
+
+  it("leaves transitions untouched when any carry a condition", () => {
+    const transitions = [
+      { ...t("Fall", "Adjustment", "Spring", "Movement", 1), condition: { yearMod: 10 } },
+      t("Spring", "Movement", "Fall", "Adjustment"),
+    ];
+    expect(orderTransitionsIntoChain(transitions)).toBe(transitions);
+  });
+
+  it("leaves transitions untouched when the chain is broken", () => {
+    const transitions = [
+      t("Spring", "Movement", "Fall", "Movement"),
+      t("Winter", "Adjustment", "Spring", "Movement", 1),
+    ];
+    expect(orderTransitionsIntoChain(transitions)).toBe(transitions);
+  });
+});
+
+describe("reconcileHomeNationsWithProvinces", () => {
+  const provinces = [
+    { id: "par", name: "Paris", type: "land" as const, supplyCenter: true, namedCoasts: [] },
+    { id: "bre", name: "Brest", type: "coastal" as const, supplyCenter: true, namedCoasts: [] },
+    { id: "mao", name: "Mid-Atlantic", type: "sea" as const, supplyCenter: false, namedCoasts: [] },
+  ];
+
+  it("clears units that no longer match the province terrain", () => {
+    const { homeNations } = reconcileHomeNationsWithProvinces(
+      { par: { nation: "fra", startingUnit: "fleet", startingCoast: null } },
+      null,
+      provinces
+    );
+    expect(homeNations.par).toEqual({ nation: "fra", startingUnit: null, startingCoast: null });
+  });
+
+  it("drops entries for de-flagged SCs and adds blanks for new ones", () => {
+    const { homeNations } = reconcileHomeNationsWithProvinces(
+      { mao: { nation: "fra", startingUnit: "fleet", startingCoast: null } },
+      null,
+      provinces
+    );
+    expect(homeNations.mao).toBeUndefined();
+    expect(homeNations.par).toEqual({ nation: "", startingUnit: null, startingCoast: null });
+    expect(homeNations.bre).toEqual({ nation: "", startingUnit: null, startingCoast: null });
+  });
+
+  it("clears stale coasts and invalid extra units", () => {
+    const spa = { id: "spa", name: "Spain", type: "land" as const, supplyCenter: true, namedCoasts: [{ id: "spa/nc", name: "NC" }] };
+    const { homeNations, extraUnits } = reconcileHomeNationsWithProvinces(
+      { spa: { nation: "fra", startingUnit: "fleet", startingCoast: "spa/sc" } },
+      [{ id: "x", province: "mao", nation: "fra", unit: "army", coast: null }],
+      [...provinces, spa]
+    );
+    // fleet is invalid on the (land) multi-coast parent and the coast no longer exists
+    expect(homeNations.spa).toEqual({ nation: "fra", startingUnit: null, startingCoast: null });
+    expect(extraUnits![0].unit).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveTransforms } from "@/utils/svgTransform";
+import { resolveTransforms, pathToAbsolute } from "@/utils/svgTransform";
 
 function parseSvg(xml: string): Element {
   const doc = new DOMParser().parseFromString(xml, "image/svg+xml");
@@ -135,5 +135,62 @@ describe("resolveTransforms – text rotation", () => {
     const tspan = root.querySelector("#ts")!;
     expect(attr(tspan, "x")).toBe("60");
     expect(attr(tspan, "y")).toBe("50");
+  });
+});
+
+describe("path data parsing – compact number syntax", () => {
+  it("parses implicit minus separators and decimal repeats", () => {
+    const root = parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(10 10)">
+          <path id="p" d="M10-20L.5.5"/>
+        </g>
+      </svg>
+    `);
+    resolveTransforms(root);
+    expect(attr(root.querySelector("#p")!, "d")).toBe("M 20 -10 L 10.5 10.5");
+  });
+});
+
+describe("pathToAbsolute", () => {
+  it("converts relative commands without moving the path", () => {
+    expect(pathToAbsolute("m 5 5 l 10 0 z")).toBe("M 5 5 L 15 5 Z");
+  });
+
+  it("keeps absolute commands intact", () => {
+    expect(pathToAbsolute("M 5 5 L 15 5 Z")).toBe("M 5 5 L 15 5 Z");
+  });
+});
+
+describe("resolveTransforms – rotated shapes become paths", () => {
+  it("converts a rotated rect to an equivalent path", () => {
+    const root = parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <g transform="rotate(90)">
+          <rect id="r" x="0" y="0" width="10" height="20" fill="red"/>
+        </g>
+      </svg>
+    `);
+    resolveTransforms(root);
+    expect(root.querySelector("rect")).toBeNull();
+    const path = root.querySelector("path")!;
+    expect(attr(path, "id")).toBe("r");
+    expect(attr(path, "fill")).toBe("red");
+    // rotate(90): (x, y) → (−y, x); corners (0,0) (10,0) (10,20) (0,20)
+    expect(attr(path, "d")).toBe("M 0 0 L 0 10 L -20 10 L -20 0 Z");
+  });
+
+  it("keeps axis-aligned rects as rects under translate and scale", () => {
+    const root = parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(5 5) scale(2)">
+          <rect id="r" x="0" y="0" width="10" height="20"/>
+        </g>
+      </svg>
+    `);
+    resolveTransforms(root);
+    const rect = root.querySelector("rect")!;
+    expect(attr(rect, "x")).toBe("5");
+    expect(attr(rect, "width")).toBe("20");
   });
 });

@@ -383,3 +383,64 @@ describe("buildDsvgOutput – root fill propagation", () => {
     expect(getFill(doc, "c2")).toBe("white");
   });
 });
+
+describe("buildDsvgOutput – unit-position markers from arc paths", () => {
+  it("centers the circle on a marker drawn as M + two arcs (Inkscape sodipodi circle)", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="container">
+    <g id="bg"></g>
+    <g id="provs"><path id="par" d="M0 0 L100 0 L100 100 L0 100 Z"/></g>
+    <g id="ups"><path id="par-marker" d="M 60 50 A 10 10 0 1 0 40 50 A 10 10 0 1 0 60 50 Z"/></g>
+    <g id="fg"></g>
+  </g>
+</svg>`;
+    const output = buildDsvgOutput(svg, {
+      provinces: "root-0-1",
+      namedCoasts: null,
+      unitPositions: "root-0-2",
+      provinceNames: null,
+      borders: null,
+      supplyCenters: null,
+    }, { "par-marker": "par" });
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const circle = doc.getElementById("par");
+    // provinces layer also has id "par"; find the circle specifically
+    const circles = Array.from(doc.querySelectorAll("circle"));
+    expect(circles).toHaveLength(1);
+    expect(circle).not.toBeNull();
+    expect(parseFloat(circles[0].getAttribute("cx")!)).toBeCloseTo(50, 3);
+    expect(parseFloat(circles[0].getAttribute("cy")!)).toBeCloseTo(50, 3);
+    expect(parseFloat(circles[0].getAttribute("r")!)).toBeCloseTo(10, 3);
+  });
+});
+
+describe("buildDsvgOutput – compound path concatenation", () => {
+  it("normalizes relative subpath starts so merged fragments do not shift", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="container">
+    <g id="bg"></g>
+    <g id="provs">
+      <g id="par">
+        <path d="M 0 0 L 10 0 L 10 10 Z"/>
+        <path d="m 50 50 l 10 0 l 0 10 z"/>
+      </g>
+    </g>
+    <g id="fg"></g>
+  </g>
+</svg>`;
+    const output = buildDsvgOutput(svg, {
+      provinces: "root-0-1",
+      namedCoasts: null,
+      unitPositions: null,
+      provinceNames: null,
+      borders: null,
+      supplyCenters: null,
+    });
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const merged = doc.getElementById("par")!;
+    expect(merged.tagName.toLowerCase()).toBe("path");
+    // The island fragment must still start at absolute (50, 50), not at
+    // (10, 10) + relative (50, 50) = (60, 60).
+    expect(merged.getAttribute("d")).toBe("M 0 0 L 10 0 L 10 10 Z M 50 50 L 60 50 L 60 60 Z");
+  });
+});
