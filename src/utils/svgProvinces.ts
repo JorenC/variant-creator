@@ -39,7 +39,7 @@ function isInkscapeSubLayer(el: Element): boolean {
   );
 }
 
-function getFlatProvinceChildren(el: Element): Element[] {
+export function getFlatProvinceChildren(el: Element): Element[] {
   const result: Element[] = [];
   for (const child of Array.from(el.children)) {
     if (isInkscapeSubLayer(child)) {

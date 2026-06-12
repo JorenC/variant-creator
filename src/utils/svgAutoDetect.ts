@@ -1,5 +1,6 @@
 import paper from "paper";
 import { resolveTransforms } from "@/utils/svgTransform";
+import { getFlatProvinceChildren } from "@/utils/svgProvinces";
 
 function elementToPathD(el: Element): string | null {
   const tag = el.tagName.toLowerCase();
@@ -98,9 +99,11 @@ export function autoDetectUnitProvinces(
   const provLayer = getLayerEl(doc.documentElement, provincesKey);
   if (!upLayer || !provLayer) return {};
 
-  // Build Paper.js paths per province for containment testing
+  // Build Paper.js paths per province for containment testing. Flatten
+  // Inkscape sub-layers the same way extractProvinces does, so provinces
+  // organized into sub-layers are still matched.
   const provinceGroups: Array<{ svgId: string; paths: paper.Path[] }> = [];
-  for (const child of Array.from(provLayer.children)) {
+  for (const child of getFlatProvinceChildren(provLayer)) {
     // Prefer inkscape:label (Inkscape files) over id (Figma/generic files)
     const svgId = child.getAttribute("inkscape:label") ?? child.getAttribute("id");
     if (!svgId || !(svgId in provinceAbbrs)) continue;

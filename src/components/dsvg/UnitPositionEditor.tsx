@@ -16,6 +16,8 @@ import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 
 export interface UnitPositionEditorHandle {
   validate: () => Record<string, string> | null;
+  /** Current values without validation, for snapshotting on Back navigation. */
+  getValues: () => Record<string, string>;
 }
 
 interface UnitPositionEditorProps {
@@ -23,6 +25,8 @@ interface UnitPositionEditorProps {
   assignments: LayerAssignments;
   provinceAbbrs: Record<string, string>;
   namedCoastEntries: NamedCoastEntry[];
+  /** Previously entered codes, restored when revisiting this step. */
+  defaultCodes?: Record<string, string>;
 }
 
 // Accepts "stp" (province) or "stp/river" (named coast, any length suffix)
@@ -45,7 +49,7 @@ function validateCode(
 export const UnitPositionEditor = forwardRef<
   UnitPositionEditorHandle,
   UnitPositionEditorProps
->(({ svgContent, assignments, provinceAbbrs, namedCoastEntries }, ref) => {
+>(({ svgContent, assignments, provinceAbbrs, namedCoastEntries, defaultCodes }, ref) => {
   const filteredSvg = useMemo(
     () => buildPreviewSvg(svgContent, assignments),
     [svgContent, assignments]
@@ -117,6 +121,11 @@ export const UnitPositionEditor = forwardRef<
   useEffect(() => {
     const initial: Record<string, string> = {};
     elements.forEach(({ svgId }) => {
+      const previous = defaultCodes?.[svgId];
+      if (previous) {
+        initial[svgId] = previous;
+        return;
+      }
       const slashIdx = svgId.indexOf("/");
       if (slashIdx !== -1) {
         const prefix = svgId.slice(0, slashIdx);
@@ -129,7 +138,7 @@ export const UnitPositionEditor = forwardRef<
     setCodes(initial);
     setErrors({});
     setFocusedId(null);
-  }, [elements]);
+  }, [elements, defaultCodes]);
 
   useImperativeHandle(
     ref,
@@ -208,6 +217,9 @@ export const UnitPositionEditor = forwardRef<
         setSummaryErrors([]);
         return { ...codes };
       },
+      getValues() {
+        return { ...codes };
+      },
     }),
     [codes, elements, countMismatch, provinceAbbrs, namedCoastEntries]
   );
@@ -264,12 +276,14 @@ export const UnitPositionEditor = forwardRef<
       : [];
 
   const formContent = !assignments.unitPositions ? (
-    <p className="text-sm text-muted-foreground">
-      No unit-positions layer was selected. You can proceed to the next step.
+    <p className="text-sm text-destructive">
+      No unit-positions layer was assigned. Go back to the Assign layers step and
+      select one — every province needs a unit-position marker.
     </p>
   ) : elements.length === 0 ? (
-    <p className="text-sm text-muted-foreground">
-      No objects found in the unit-positions layer.
+    <p className="text-sm text-destructive">
+      No objects found in the unit-positions layer. Every province needs a
+      unit-position marker; check that the right layer is assigned.
     </p>
   ) : (
     <div className="flex flex-col gap-2">

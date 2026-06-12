@@ -17,6 +17,8 @@ interface DsvgExportProps {
   namedCoastEntries: NamedCoastEntry[];
   tree: SvgTreeNode[];
   fileName: string;
+  /** Lifts the wizard's in-app navigation guard for the upcoming navigate. */
+  onLeaveApproved?: () => void;
 }
 
 // Checks that required layers are direct children of the root <svg> element,
@@ -59,6 +61,32 @@ function validateDsvgStructure(svgContent: string): string[] {
     }
   }
 
+  // The server requires named-coast path ids in the form "parent/coast" with
+  // an existing parent province; an un-renamed coast (raw Inkscape id) fails
+  // there with no hint of the cause.
+  const provincesLayer = doc.getElementById("provinces");
+  const provinceIds = new Set(
+    Array.from(provincesLayer?.querySelectorAll("path") ?? [])
+      .map(el => el.getAttribute("id"))
+      .filter((id): id is string => id !== null)
+  );
+  const namedCoastsLayer = doc.getElementById("named-coasts");
+  for (const el of Array.from(namedCoastsLayer?.querySelectorAll("path") ?? [])) {
+    const id = el.getAttribute("id") ?? "";
+    const slashIdx = id.indexOf("/");
+    const parent = slashIdx === -1 ? "" : id.slice(0, slashIdx);
+    const coast = slashIdx === -1 ? "" : id.slice(slashIdx + 1);
+    if (!parent || !coast) {
+      errors.push(
+        `Named-coast id "${id}" is not in the form "parent/coast" — go back to the Named coasts step and assign its parent and abbreviation.`
+      );
+    } else if (!provinceIds.has(parent)) {
+      errors.push(
+        `Named-coast id "${id}" references parent province "${parent}", which is not in the provinces layer.`
+      );
+    }
+  }
+
   return errors;
 }
 
@@ -90,8 +118,22 @@ function validatePositionConsistency(svgContent: string): { missing: string[]; u
   };
 }
 
-export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCoastEntries, tree, fileName }: DsvgExportProps) {
+export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCoastEntries, tree, fileName, onLeaveApproved }: DsvgExportProps) {
   const navigate = useNavigate();
+  const [hasDownloaded, setHasDownloaded] = useState(false);
+
+  const handleContinue = () => {
+    if (
+      !hasDownloaded &&
+      !window.confirm(
+        "You haven't downloaded the .d.svg file yet — leaving this page discards your work. Continue anyway?"
+      )
+    ) {
+      return;
+    }
+    onLeaveApproved?.();
+    navigate("/dvar-creator");
+  };
   const displayNodes = useMemo(
     () => tree.flatMap(n => (n.children.length > 0 ? n.children : [n])),
     [tree]
@@ -222,6 +264,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
     a.download = `${baseName}.d.svg`;
     a.click();
     URL.revokeObjectURL(url);
+    setHasDownloaded(true);
   };
 
   const handleDownload = async () => {
@@ -484,7 +527,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
           The SVG should now be ready for download. You can check the layers to see if everything looks good and if the fonts were embedded correctly. After this, you can continue with the dVAR creator to add the metadata.
         </p>
 
-        <Button variant="outline" onClick={() => navigate("/dvar-creator")}>
+        <Button variant="outline" onClick={handleContinue}>
           Continue to dVAR creator
           <ChevronRight className="h-4 w-4" />
         </Button>
