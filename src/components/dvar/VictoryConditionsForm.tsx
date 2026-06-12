@@ -27,8 +27,23 @@ interface VictoryConditionsFormProps {
 export const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, VictoryConditionsFormProps>(
   ({ provinces, defaultValues, onSubmit }, ref) => {
     const [conditions, setConditions] = useState<VictoryConditionsData>(defaultValues);
+    const [errorIndices, setErrorIndices] = useState<Set<number>>(new Set());
 
-    useImperativeHandle(ref, () => ({ submit: () => onSubmit(conditions), getValues: () => conditions }));
+    useImperativeHandle(ref, () => ({
+      submit: () => {
+        const invalid = new Set<number>();
+        conditions.forEach((c, i) => {
+          if (c.type === "province-control" && c.provinces.length === 0) invalid.add(i);
+        });
+        if (invalid.size > 0) {
+          setErrorIndices(invalid);
+          return;
+        }
+        setErrorIndices(new Set());
+        onSubmit(conditions);
+      },
+      getValues: () => conditions,
+    }));
 
     const addCondition = () => {
       setConditions(prev => [...prev, { type: "supply-center-majority", supplyCenters: 18 }]);
@@ -50,6 +65,7 @@ export const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, Vic
     };
 
     const updateCondition = (index: number, updates: object) => {
+      setErrorIndices(new Set());
       setConditions(prev =>
         prev.map((c, i) => (i === index ? { ...c, ...updates } as VictoryCondition : c))
       );
@@ -143,6 +159,9 @@ export const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, Vic
             {condition.type === "province-control" && (
               <div className="space-y-2">
                 <Label className="text-sm">Provinces to control</Label>
+                {errorIndices.has(index) && (
+                  <p className="text-sm text-destructive">Select at least one province for this condition.</p>
+                )}
                 <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
                   {provinces.length === 0 ? (
                     <p className="text-xs text-muted-foreground">No provinces defined.</p>

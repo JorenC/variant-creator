@@ -1,4 +1,4 @@
-import { detectPathIntersections } from "./geometry";
+import { prepareShape, preparedShapesIntersect, disposeShape } from "./geometry";
 
 export type PassType = "army" | "fleet" | "both";
 
@@ -33,22 +33,18 @@ export function autoDetectDvarAdjacencies(
   ];
   const map = buildEmptyDvarAdjacencyMap(allShapes.map(s => s.id));
 
-  for (let i = 0; i < allShapes.length; i++) {
-    for (let j = i + 1; j < allShapes.length; j++) {
-      const a = allShapes[i];
-      const b = allShapes[j];
+  // Parse each shape's paths once and prefilter pairs by bounding box —
+  // re-parsing per pair makes the n²/2 sweep freeze the UI on large maps.
+  const prepared = allShapes.map(s => prepareShape(s.paths));
 
-      let intersects = false;
-      outer: for (const pa of a.paths) {
-        for (const pb of b.paths) {
-          if (detectPathIntersections(pa, pb)) {
-            intersects = true;
-            break outer;
-          }
-        }
-      }
+  try {
+    for (let i = 0; i < allShapes.length; i++) {
+      for (let j = i + 1; j < allShapes.length; j++) {
+        const a = allShapes[i];
+        const b = allShapes[j];
 
-      if (intersects) {
+        if (!preparedShapesIntersect(prepared[i], prepared[j])) continue;
+
         if (a.isCoast && b.isCoast) {
           // Subprovince ↔ subprovince: always fleet
           map[a.id].push({ to: b.id, pass: "fleet" });
@@ -85,6 +81,8 @@ export function autoDetectDvarAdjacencies(
         }
       }
     }
+  } finally {
+    for (const shape of prepared) disposeShape(shape);
   }
 
   return map;

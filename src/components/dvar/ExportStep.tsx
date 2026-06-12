@@ -4,12 +4,34 @@ import { Download, ChevronRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { assembleDvar } from "@/utils/dvarAssemble";
 import { DvarSchema } from "@/utils/dvarSchema";
+import { validateDvarSemantics } from "@/utils/dvarValidate";
 import type { AssembleDvarInput, ExtraUnit, VictoryCondition } from "@/types/dvar";
 
-export function ExportStep(props: AssembleDvarInput) {
-  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData } = props;
+interface ExportStepProps extends AssembleDvarInput {
+  /** Notifies the wizard that a valid .dvar was downloaded (lifts leave guards). */
+  onDownloaded?: () => void;
+  /** Lifts the wizard's in-app navigation guard for the upcoming navigate. */
+  onLeaveApproved?: () => void;
+}
+
+export function ExportStep(props: ExportStepProps) {
+  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData, onDownloaded, onLeaveApproved } = props;
   const navigate = useNavigate();
   const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [hasDownloaded, setHasDownloaded] = useState(false);
+
+  const handleContinue = () => {
+    if (
+      !hasDownloaded &&
+      !window.confirm(
+        "You haven't downloaded the .dvar file yet — leaving this page discards your work. Continue anyway?"
+      )
+    ) {
+      return;
+    }
+    onLeaveApproved?.();
+    navigate("/upload-diplicity");
+  };
 
   const scCount = provincesData.provinces.filter(p => p.supplyCenter).length;
   const namedCoastCount = provincesData.provinces.reduce((n, p) => n + p.namedCoasts.length, 0);
@@ -28,6 +50,15 @@ export function ExportStep(props: AssembleDvarInput) {
       setSchemaError(messages);
       return;
     }
+    // The server additionally enforces reference integrity and adjacency
+    // symmetry; surface those failures here instead of at upload time.
+    const semanticErrors = validateDvarSemantics(result.data);
+    if (semanticErrors.length > 0) {
+      setSchemaError(semanticErrors.join("\n"));
+      return;
+    }
+    setHasDownloaded(true);
+    onDownloaded?.();
     const json = JSON.stringify(output, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -152,7 +183,7 @@ export function ExportStep(props: AssembleDvarInput) {
           <Download className="h-4 w-4" />
           Download {basicInfo.id}.dvar
         </Button>
-        <Button size="lg" variant="outline" onClick={() => navigate("/upload-diplicity")}>
+        <Button size="lg" variant="outline" onClick={handleContinue}>
           Continue to Upload to Diplicity
           <ChevronRight className="h-4 w-4" />
         </Button>

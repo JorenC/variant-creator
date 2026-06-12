@@ -13,11 +13,15 @@ import type { LayerAssignments } from "@/types/dsvg";
 
 export interface LayerPreviewHandle {
   validate: () => Record<string, string> | null;
+  /** Current values without validation, for snapshotting on Back navigation. */
+  getValues: () => Record<string, string>;
 }
 
 interface LayerPreviewProps {
   svgContent: string;
   assignments: LayerAssignments;
+  /** Previously entered abbreviations, restored when revisiting this step. */
+  defaultAbbrs?: Record<string, string>;
 }
 
 function validateAbbr(
@@ -36,7 +40,7 @@ function validateAbbr(
 }
 
 export const LayerPreview = forwardRef<LayerPreviewHandle, LayerPreviewProps>(
-  ({ svgContent, assignments }, ref) => {
+  ({ svgContent, assignments, defaultAbbrs }, ref) => {
     const filteredSvg = useMemo(
       () => buildPreviewSvg(svgContent, assignments),
       [svgContent, assignments]
@@ -72,33 +76,50 @@ export const LayerPreview = forwardRef<LayerPreviewHandle, LayerPreviewProps>(
     useEffect(() => {
       const initial: Record<string, string> = {};
       provinces.forEach(({ svgId }) => {
-        initial[svgId] = svgId.slice(0, 3).toLowerCase();
+        initial[svgId] = defaultAbbrs?.[svgId] ?? svgId.slice(0, 3).toLowerCase();
       });
       setAbbrs(initial);
       setErrors({});
       setFocusedId(null);
-    }, [provinces]);
+    }, [provinces, defaultAbbrs]);
 
     useImperativeHandle(
       ref,
       () => ({
         validate() {
-          const invalid = provinces.filter(
-            p => !/^[a-zA-Z]{3}$/.test(abbrs[p.svgId] ?? "")
-          );
-          if (invalid.length > 0) {
-            const newErrors: Record<string, string> = {};
-            invalid.forEach(p => {
+          const newErrors: Record<string, string> = {};
+          for (const p of provinces) {
+            if (!/^[a-zA-Z]{3}$/.test(abbrs[p.svgId] ?? "")) {
               newErrors[p.svgId] = "Must be exactly 3 letters.";
-            });
+            }
+          }
+          // Duplicates produce duplicate ids in the dSVG, which the server
+          // rejects — checking only on blur let them through on Next.
+          const byAbbr = new Map<string, string[]>();
+          for (const p of provinces) {
+            const lower = (abbrs[p.svgId] ?? "").toLowerCase();
+            byAbbr.set(lower, [...(byAbbr.get(lower) ?? []), p.svgId]);
+          }
+          for (const [abbr, ids] of byAbbr) {
+            if (ids.length > 1) {
+              for (const id of ids) {
+                newErrors[id] = `Duplicate abbreviation "${abbr}".`;
+              }
+            }
+          }
+          if (Object.keys(newErrors).length > 0) {
             setErrors(prev => ({ ...prev, ...newErrors }));
+            const firstId = provinces.find(p => newErrors[p.svgId])?.svgId;
             requestAnimationFrame(() => {
-              const firstInput = inputRefs.current[invalid[0].svgId];
+              const firstInput = firstId ? inputRefs.current[firstId] : null;
               firstInput?.scrollIntoView({ behavior: "smooth", block: "nearest" });
               firstInput?.focus();
             });
             return null;
           }
+          return { ...abbrs };
+        },
+        getValues() {
           return { ...abbrs };
         },
       }),

@@ -45,6 +45,7 @@ vi.mock("paper", () => {
       setup: vi.fn(),
       Size: vi.fn(),
       Path: mockPath,
+      CompoundPath: mockPath,
     },
   };
 });

@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { Upload, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { useUnsavedWorkGuard } from "@/hooks/useUnsavedWorkGuard";
 import { AppHeader } from "@/components/common/AppHeader";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -88,10 +89,14 @@ export function DSvgCreator() {
   const [unitPositionCodes, setUnitPositionCodes] = useState<Record<string, string>>({});
   const [namedCoastEntries, setNamedCoastEntries] = useState<NamedCoastEntry[]>([]);
 
+  const [assignError, setAssignError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const layerPreviewRef = useRef<LayerPreviewHandle>(null);
   const namedCoastEditorRef = useRef<NamedCoastEditorHandle>(null);
   const unitPositionEditorRef = useRef<UnitPositionEditorHandle>(null);
+
+  const { allowNavigation } = useUnsavedWorkGuard(step !== "upload");
 
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".svg")) {
@@ -99,23 +104,27 @@ export function DSvgCreator() {
       return;
     }
 
-    const content = await file.text();
-    const validationError = validateAnySvg(content);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+    try {
+      const content = await file.text();
+      const validationError = validateAnySvg(content);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
 
-    const parsed = parseSvgTree(content);
-    setError(null);
-    setFileName(file.name);
-    setSvgContent(content);
-    setTree(parsed);
-    setAssignments(autoDetectAssignments(parsed));
-    setProvinceAbbrs({});
-    setUnitPositionCodes({});
-    setNamedCoastEntries([]);
-    setStep("assign");
+      const parsed = parseSvgTree(content);
+      setError(null);
+      setFileName(file.name);
+      setSvgContent(content);
+      setTree(parsed);
+      setAssignments(autoDetectAssignments(parsed));
+      setProvinceAbbrs({});
+      setUnitPositionCodes({});
+      setNamedCoastEntries([]);
+      setStep("assign");
+    } catch {
+      setError("Could not read the file. Please try again.");
+    }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -128,9 +137,16 @@ export function DSvgCreator() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
+    e.target.value = "";
   };
 
   const handleClear = () => {
+    if (
+      step !== "upload" &&
+      !window.confirm("Clearing discards everything you've entered in this wizard. Clear anyway?")
+    ) {
+      return;
+    }
     setStep("upload");
     setSvgContent(null);
     setTree(null);
@@ -140,11 +156,19 @@ export function DSvgCreator() {
     setProvinceAbbrs({});
     setUnitPositionCodes({});
     setNamedCoastEntries([]);
+    setAssignError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleNext = () => {
     if (step === "assign") {
+      if (!assignments.provinces || !assignments.unitPositions) {
+        setAssignError(
+          "Provinces and Unit Positions layers are required — assign both before continuing."
+        );
+        return;
+      }
+      setAssignError(null);
       setStep("preview");
       return;
     }
@@ -157,8 +181,11 @@ export function DSvgCreator() {
       return;
     }
     if (step === "named-coasts") {
-      setNamedCoastEntries(namedCoastEditorRef.current?.getData() ?? []);
-      setStep("unit-positions");
+      const entries = namedCoastEditorRef.current?.validate();
+      if (entries) {
+        setNamedCoastEntries(entries);
+        setStep("unit-positions");
+      }
       return;
     }
     if (step === "unit-positions") {
@@ -169,6 +196,19 @@ export function DSvgCreator() {
       }
       return;
     }
+  };
+
+  // Snapshot the active step's in-progress values (without validating) so
+  // going back never discards them.
+  const handleBack = () => {
+    if (step === "preview" && layerPreviewRef.current) {
+      setProvinceAbbrs(layerPreviewRef.current.getValues());
+    } else if (step === "named-coasts" && namedCoastEditorRef.current) {
+      setNamedCoastEntries(namedCoastEditorRef.current.getData());
+    } else if (step === "unit-positions" && unitPositionEditorRef.current) {
+      setUnitPositionCodes(unitPositionEditorRef.current.getValues());
+    }
+    setStep(PREV_STEP[step as Exclude<Step, "upload">]);
   };
 
   return (
@@ -246,11 +286,19 @@ export function DSvgCreator() {
             </div>
 
             {step === "assign" && tree && (
-              <LayerAssignment
-                tree={tree}
-                assignments={assignments}
-                onChange={setAssignments}
-              />
+              <>
+                <LayerAssignment
+                  tree={tree}
+                  assignments={assignments}
+                  onChange={a => { setAssignments(a); setAssignError(null); }}
+                />
+                {assignError && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {assignError}
+                  </div>
+                )}
+              </>
             )}
 
             {step === "preview" && svgContent && (
@@ -258,6 +306,7 @@ export function DSvgCreator() {
                 ref={layerPreviewRef}
                 svgContent={svgContent}
                 assignments={assignments}
+                defaultAbbrs={Object.keys(provinceAbbrs).length > 0 ? provinceAbbrs : undefined}
               />
             )}
 
@@ -267,6 +316,7 @@ export function DSvgCreator() {
                 svgContent={svgContent}
                 assignments={assignments}
                 provinceAbbrs={provinceAbbrs}
+                defaultEntries={namedCoastEntries.length > 0 ? namedCoastEntries : undefined}
               />
             )}
 
@@ -277,6 +327,7 @@ export function DSvgCreator() {
                 assignments={assignments}
                 provinceAbbrs={provinceAbbrs}
                 namedCoastEntries={namedCoastEntries}
+                defaultCodes={Object.keys(unitPositionCodes).length > 0 ? unitPositionCodes : undefined}
               />
             )}
 
@@ -288,16 +339,12 @@ export function DSvgCreator() {
                 namedCoastEntries={namedCoastEntries}
                 tree={tree}
                 fileName={fileName ?? "map.svg"}
+                onLeaveApproved={allowNavigation}
               />
             )}
 
             <div className="flex justify-between pt-2">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  setStep(PREV_STEP[step as Exclude<Step, "upload">])
-                }
-              >
+              <Button variant="outline" onClick={handleBack}>
                 <ChevronLeft className="h-4 w-4" />
                 Back
               </Button>

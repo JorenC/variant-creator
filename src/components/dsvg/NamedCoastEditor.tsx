@@ -23,6 +23,9 @@ import type { LayerAssignments, NamedCoastEntry } from "@/types/dsvg";
 export type { NamedCoastEntry };
 
 export interface NamedCoastEditorHandle {
+  /** Validates all entries; returns them when complete, null when invalid. */
+  validate: () => NamedCoastEntry[] | null;
+  /** Current values without validation, for snapshotting on Back navigation. */
   getData: () => NamedCoastEntry[];
 }
 
@@ -30,6 +33,8 @@ interface NamedCoastEditorProps {
   svgContent: string;
   assignments: LayerAssignments;
   provinceAbbrs: Record<string, string>;
+  /** Previously entered coast data, restored when revisiting this step. */
+  defaultEntries?: NamedCoastEntry[];
 }
 
 interface CoastState {
@@ -40,7 +45,7 @@ interface CoastState {
 export const NamedCoastEditor = forwardRef<
   NamedCoastEditorHandle,
   NamedCoastEditorProps
->(({ svgContent, assignments, provinceAbbrs }, ref) => {
+>(({ svgContent, assignments, provinceAbbrs, defaultEntries }, ref) => {
   const namedCoastsKey = assignments.namedCoasts;
 
   const { viewBox, provinces: coastElements } = useMemo(
@@ -93,8 +98,14 @@ export const NamedCoastEditor = forwardRef<
 
   useEffect(() => {
     const provinceAbbrSet = new Set(Object.values(provinceAbbrs));
+    const defaults = new Map((defaultEntries ?? []).map(e => [e.svgId, e]));
     const initial: Record<string, CoastState> = {};
     coastElements.forEach(({ svgId }) => {
+      const previous = defaults.get(svgId);
+      if (previous && (previous.parentProvince || previous.coastAbbr)) {
+        initial[svgId] = { parentProvince: previous.parentProvince, coastAbbr: previous.coastAbbr };
+        return;
+      }
       const slashIdx = svgId.indexOf("/");
       if (slashIdx !== -1) {
         const prefix = svgId.slice(0, slashIdx);
@@ -110,19 +121,54 @@ export const NamedCoastEditor = forwardRef<
     setEntries(initial);
     setErrors({});
     setFocusedId(null);
-  }, [coastElements, provinceAbbrs]);
+  }, [coastElements, provinceAbbrs, defaultEntries]);
 
   useImperativeHandle(
     ref,
-    () => ({
-      getData() {
-        return coastElements.map(({ svgId }) => ({
+    () => {
+      const collect = () =>
+        coastElements.map(({ svgId }) => ({
           svgId,
           parentProvince: entries[svgId]?.parentProvince ?? "",
           coastAbbr: entries[svgId]?.coastAbbr ?? "",
         }));
-      },
-    }),
+      return {
+        getData: collect,
+        validate() {
+          // Incomplete entries used to pass through silently; the coast then
+          // kept its raw SVG id in the export, which the server rejects
+          // (named-coast ids must be "parent/coast").
+          const newErrors: Record<string, string> = {};
+          const data = collect();
+          for (const entry of data) {
+            if (!entry.parentProvince) {
+              newErrors[entry.svgId] = "Select a parent province.";
+            } else if (!entry.coastAbbr) {
+              newErrors[entry.svgId] = "Enter a coast abbreviation.";
+            } else if (!/^[a-zA-Z]+$/.test(entry.coastAbbr)) {
+              newErrors[entry.svgId] = "Only letters are allowed.";
+            }
+          }
+          const byFullId = new Map<string, string[]>();
+          for (const entry of data) {
+            if (!entry.parentProvince || !entry.coastAbbr) continue;
+            const full = `${entry.parentProvince}/${entry.coastAbbr}`.toLowerCase();
+            byFullId.set(full, [...(byFullId.get(full) ?? []), entry.svgId]);
+          }
+          for (const [full, ids] of byFullId) {
+            if (ids.length > 1) {
+              for (const id of ids) newErrors[id] = `Duplicate coast id "${full}".`;
+            }
+          }
+          if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            return null;
+          }
+          setErrors({});
+          return data;
+        },
+      };
+    },
     [coastElements, entries]
   );
 
@@ -233,7 +279,7 @@ export const NamedCoastEditor = forwardRef<
 
                   <Input
                     value={entries[svgId]?.coastAbbr ?? ""}
-                    maxLength={2}
+                    maxLength={8}
                     placeholder="nc"
                     aria-invalid={!!error}
                     onChange={e => handleCoastAbbrChange(svgId, e.target.value)}

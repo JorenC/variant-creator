@@ -6,7 +6,7 @@ export interface ParsedDsvg {
 export function validateDsvg(svgContent: string): string | null {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
-  if (doc.querySelector("parseerror")) return "Invalid SVG file.";
+  if (doc.querySelector("parsererror")) return "Invalid SVG file.";
   if (doc.documentElement.tagName.toLowerCase() !== "svg") return "File is not an SVG.";
   if (!doc.getElementById("provinces"))
     return "Not a valid dSVG file — missing 'provinces' layer. Create one with the dSVG Creator first.";

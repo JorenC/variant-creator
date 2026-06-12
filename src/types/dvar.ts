@@ -100,7 +100,7 @@ export interface DvarJsonNamedCoast { id: string; name: string; parentProvince: 
 export interface DvarJsonProvince { id: string; name: string; type: string; supplyCenter: boolean; adjacencies: DvarJsonAdjacency[]; homeNation?: string; }
 export interface DvarJsonUnit { nation: string; type: string; location: string; }
 export interface DvarJsonSupplyCenter { nation: string; province: string; }
-export interface DvarJsonPhaseTransition { from: { season: string; type: string }; to: { season: string; type: string; yearDelta: number }; }
+export interface DvarJsonPhaseTransition { from: { season: string; type: string }; to: { season: string; type: string; yearDelta: number }; condition?: Record<string, unknown>; }
 export interface DvarJsonDomRule { province: string; nation: string; dependencies: Array<{ province: string; nation: string }>; }
 
 export interface DvarJson {

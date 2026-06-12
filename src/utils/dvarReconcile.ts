@@ -55,6 +55,30 @@ export function collectPreFillWarnings(dvar: DvarJson): string[] {
     }
   }
 
+  // Conditional phase transitions (yearMod conditions, used by e.g. hundred-style
+  // variants): the phase-progression form cannot represent them.
+  const conditionalCount = (dvar.phaseProgression?.transitions ?? []).filter(t => t.condition).length;
+  if (conditionalCount > 0) {
+    warnings.push(
+      `${conditionalCount} conditional phase transition${conditionalCount !== 1 ? "s" : ""} (yearMod conditions) cannot be represented and will be dropped`
+    );
+  }
+
+  // homeNation designations that differ from initial supply-center ownership:
+  // the wizard derives home nations from initial ownership, so an independent
+  // homeNation (e.g. a home center that starts captured) cannot be carried over.
+  for (const province of dvar.provinces ?? []) {
+    if (province.homeNation === undefined) continue;
+    const owner = scNationMap[province.id];
+    if (owner !== province.homeNation) {
+      warnings.push(
+        owner === undefined
+          ? `${province.id}: home nation "${province.homeNation}" has no matching initial supply-center owner — the designation will be dropped`
+          : `${province.id}: home nation "${province.homeNation}" differs from initial owner "${owner}" — the initial owner will be used for both`
+      );
+    }
+  }
+
   return warnings;
 }
 

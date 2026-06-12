@@ -12,8 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { buildHomeNationPreviewSvg } from "@/utils/dvarPreview";
-import { aspectRatioFromSvg } from "@/utils/svgAspect";
+import { buildHomeNationPreviewSvg, extractDsvgProvinceShapes } from "@/utils/dvarPreview";
+import { aspectRatioFromViewBox } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
 import type { ExtraUnit, HomeNationsData, HomeNationsFormValues } from "@/types/dvar";
 
@@ -36,6 +36,7 @@ interface HomeNationsFormProps {
 
 interface ValidationErrors {
   coastErrors: Set<string>;
+  terrainErrors: Set<string>;
   incompleteExtra: Set<string>;
   coastExtra: Set<string>;
   duplicateExtra: Set<string>;
@@ -69,6 +70,7 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
     const validationErrors = useMemo((): ValidationErrors => {
       const empty: ValidationErrors = {
         coastErrors: new Set(),
+        terrainErrors: new Set(),
         incompleteExtra: new Set(),
         coastExtra: new Set(),
         duplicateExtra: new Set(),
@@ -82,6 +84,16 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
         const entry = assignment[province.id];
         if (entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast) {
           coastErrors.add(province.id);
+        }
+      }
+
+      // Terrain mismatches can also arrive as stale data (province retyped on
+      // an earlier step after the unit was assigned), so check on submit too.
+      const terrainErrors = new Set<string>();
+      for (const province of sortedProvinces) {
+        const unit = assignment[province.id]?.startingUnit ?? null;
+        if ((unit === "fleet" && province.type === "land") || (unit === "army" && province.type === "sea")) {
+          terrainErrors.add(province.id);
         }
       }
 
@@ -124,13 +136,14 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
         }
       }
 
-      return { coastErrors, incompleteExtra, coastExtra, duplicateExtra, conflictExtra, conflictHome };
+      return { coastErrors, terrainErrors, incompleteExtra, coastExtra, duplicateExtra, conflictExtra, conflictHome };
     }, [submitAttempted, sortedProvinces, assignment, extraUnits, extraUnitsEnabled, allProvincesMap]);
 
     const hasAnyError = useMemo(() => {
       const e = validationErrors;
       return (
         e.coastErrors.size > 0 ||
+        e.terrainErrors.size > 0 ||
         e.incompleteExtra.size > 0 ||
         e.coastExtra.size > 0 ||
         e.duplicateExtra.size > 0 ||
@@ -147,6 +160,11 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
           return entry?.startingUnit === "fleet" && province.namedCoasts.length > 0 && !entry.startingCoast;
         });
 
+        const hasTerrainErrors = sortedProvinces.some(province => {
+          const unit = assignment[province.id]?.startingUnit ?? null;
+          return (unit === "fleet" && province.type === "land") || (unit === "army" && province.type === "sea");
+        });
+
         let hasExtraErrors = false;
         if (extraUnitsEnabled) {
           for (const eu of extraUnits) {
@@ -157,6 +175,16 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
               if (eu.unit === "fleet" && eu.province) {
                 const prov = allProvincesMap.get(eu.province);
                 if (prov && prov.namedCoasts.length > 0 && !eu.coast) { hasExtraErrors = true; break; }
+              }
+            }
+          }
+          if (!hasExtraErrors) {
+            for (const eu of extraUnits) {
+              const prov = eu.province ? allProvincesMap.get(eu.province) : undefined;
+              if (!prov) continue;
+              if ((eu.unit === "fleet" && prov.type === "land") || (eu.unit === "army" && prov.type === "sea")) {
+                hasExtraErrors = true;
+                break;
               }
             }
           }
@@ -175,7 +203,7 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
           }
         }
 
-        if (hasCoastErrors || hasExtraErrors) return;
+        if (hasCoastErrors || hasTerrainErrors || hasExtraErrors) return;
         onSubmit({ assignments: assignment, extraUnits: extraUnitsEnabled ? extraUnits : [] });
       },
       getValues: () => ({ assignments: assignment, extraUnits: extraUnitsEnabled ? extraUnits : [] }),
@@ -194,12 +222,18 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
       return colors;
     }, [assignment, nations]);
 
+    // The highlight is drawn as an inline overlay; baking it into the preview
+    // SVG would re-serialize and re-decode the whole map on every mouseover.
     const previewSvg = useMemo(
-      () => buildHomeNationPreviewSvg(svgContent, provinceColors, highlightedId),
-      [svgContent, provinceColors, highlightedId]
+      () => buildHomeNationPreviewSvg(svgContent, provinceColors, null),
+      [svgContent, provinceColors]
     );
     const previewUrl = useSvgObjectUrl(previewSvg);
-    const aspectRatio = useMemo(() => aspectRatioFromSvg(svgContent), [svgContent]);
+    const { shapes: provinceShapes, viewBox } = useMemo(
+      () => extractDsvgProvinceShapes(svgContent),
+      [svgContent]
+    );
+    const aspectRatio = useMemo(() => aspectRatioFromViewBox(viewBox), [viewBox]);
 
     const addExtraUnit = () => {
       setExtraUnits(prev => [
@@ -232,6 +266,12 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
             Some fleets require a coast selection. Please select a coast for each fleet marked below.
           </div>
         )}
+        {validationErrors.terrainErrors.size > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Some starting units don't match their province's terrain (army at sea or fleet on land). Fix the units marked below.
+          </div>
+        )}
         {hasAnyError && (validationErrors.incompleteExtra.size > 0 || validationErrors.coastExtra.size > 0 || validationErrors.duplicateExtra.size > 0 || validationErrors.conflictExtra.size > 0) && (
           <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />
@@ -245,7 +285,7 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
           </div>
         )}
         <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
-          Currently, we do not support Neutral units. You can assign them, but the game will not render them.
+          Neutral units are not supported: units assigned to Neutral are left out of the exported variant entirely.
         </p>
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -320,7 +360,8 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                     <div className="flex shrink-0 items-center gap-0.5 rounded-md border px-1.5 py-1">
                       {(["army", "fleet", "none"] as const).map(unit => {
                         const disableFleet = unit === "fleet" && isLand;
-                        const disabled = isEmpty || disableFleet;
+                        const disableArmy = unit === "army" && province.type === "sea";
+                        const disabled = isEmpty || disableFleet || disableArmy;
                         const active =
                           unit === "none"
                             ? !isEmpty && entry.startingUnit === null
@@ -383,6 +424,9 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                   {validationErrors.coastErrors.has(province.id) && (
                     <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">Select a coast for this fleet.</p>
                   )}
+                  {validationErrors.terrainErrors.has(province.id) && (
+                    <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">This unit type cannot start on this terrain.</p>
+                  )}
                   {isConflict && (
                     <p className="ml-[4.5rem] mt-0.5 text-xs text-destructive">Conflicts with an extra unit on this province.</p>
                   )}
@@ -392,10 +436,20 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
           </div>
 
           <div className="sticky top-8 self-start">
-            <div className="w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+            <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
               {previewUrl && (
-                <img src={previewUrl} alt="Map preview" className="h-full w-full object-contain" />
+                <img src={previewUrl} alt="Map preview" className="absolute inset-0 h-full w-full object-contain" />
               )}
+              <svg viewBox={viewBox} className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}>
+                {highlightedId &&
+                  provinceShapes
+                    .filter(s => s.id === highlightedId)
+                    .map(shape =>
+                      shape.paths.map((d, i) => (
+                        <path key={i} d={d} fill="#fde047" fillOpacity={0.7} />
+                      ))
+                    )}
+              </svg>
             </div>
           </div>
         </div>
@@ -502,7 +556,8 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                       !eu.unit && validationErrors.incompleteExtra.has(eu.id) && "border-destructive"
                     )}>
                       {(["army", "fleet"] as const).map(unit => {
-                        const disabled = unit === "fleet" && !!isLand;
+                        const isSea = selectedProvince?.type === "sea";
+                        const disabled = (unit === "fleet" && !!isLand) || (unit === "army" && isSea);
                         const active = eu.unit === unit;
                         return (
                           <button
