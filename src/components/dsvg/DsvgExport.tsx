@@ -291,6 +291,30 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
         setBuildWarnings(collectedWarnings);
         return;
       }
+
+      // Minify with SVGO (config preserves ids, hidden layers, circles). The
+      // optimized result is re-validated as a safety net; on any failure the
+      // unoptimized output is used so the download always proceeds.
+      try {
+        const { optimizeDsvg } = await import("@/utils/svgOptimize");
+        const optimized = optimizeDsvg(output);
+        const optimizedPositions = validatePositionConsistency(optimized);
+        if (
+          validateDsvgStructure(optimized).length > 0 ||
+          optimizedPositions.missing.length > 0 ||
+          optimizedPositions.unknown.length > 0
+        ) {
+          collectedWarnings.push(
+            "SVG optimization skipped: the optimized output failed dSVG validation, so the unoptimized SVG was used instead."
+          );
+        } else {
+          output = optimized;
+        }
+      } catch (err) {
+        collectedWarnings.push(
+          `SVG optimization skipped: ${err instanceof Error ? err.message : "optimizer failed to run"}. The unoptimized SVG was used instead.`
+        );
+      }
       setBuildWarnings(collectedWarnings);
 
       if (embedFontsEnabled && fontInfo) {

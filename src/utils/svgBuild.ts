@@ -155,6 +155,11 @@ const DRAWABLE_TAGS = new Set(["path", "rect", "circle", "ellipse", "polygon", "
 function propagateRootFill(root: Element, fillValue: string): void {
   for (const el of Array.from(root.querySelectorAll("*"))) {
     if (DRAWABLE_TAGS.has(el.tagName.toLowerCase()) && !el.hasAttribute("fill")) {
+      // Skip elements inside non-rendering contexts. In particular, <mask>
+      // elements use fill="white" on the <mask> element itself to set the
+      // default fill for their children; stamping fill="none" would make
+      // the mask content invisible and hide any masked visuals (e.g. SC circles).
+      if (el.closest("mask, clipPath, defs, pattern, symbol")) continue;
       el.setAttribute("fill", fillValue);
     }
   }
