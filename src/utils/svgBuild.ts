@@ -1,6 +1,7 @@
 import type { SvgTreeNode } from "@/utils/svgTree";
 import type { LayerAssignments } from "@/types/dsvg";
-import { resolveTransforms } from "@/utils/svgTransform";
+import { resolveTransforms, pathToAbsolute } from "@/utils/svgTransform";
+import { calculatePathDataBounds } from "@/utils/pathBounds";
 
 const INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape";
 const SODIPODI_NS = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd";
@@ -233,7 +234,10 @@ function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
       const d = pathEl.getAttribute("d");
       if (d && !seenDs.has(d)) {
         seenDs.add(d);
-        uniqueDs.push(d);
+        // Normalize to absolute commands before concatenation: a leading
+        // relative `m` would otherwise become relative to the previous
+        // subpath's endpoint and shift this fragment.
+        uniqueDs.push(pathToAbsolute(d));
       }
     }
 
@@ -258,43 +262,17 @@ function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
 
 // ─── Path centre extraction (for unit-position markers) ──────────────────────
 
-// Returns the bounding-box centre and approximate radius of a path element by
-// sampling the start point (M) and the destination point of each absolute
-// C / L / Q command. Works for circles drawn with any number of bezier arcs
-// (Inkscape uses 4, some exporters use 3) as well as arbitrary compound shapes
-// — diplicity-react only needs cx/cy for unit placement, so an approximation is fine.
+// Returns the bounding-box centre and approximate radius of a path element.
+// Computed from exact path geometry so every command form is covered — arcs
+// (Inkscape sodipodi circles serialize as M + A commands), relative commands,
+// beziers, and compound shapes. diplicity-react only needs cx/cy for placement.
 function pathCenter(d: string): { cx: number; cy: number; r: number } | null {
-  const xs: number[] = [];
-  const ys: number[] = [];
-
-  const mMatch = d.match(/M\s*([-\d.e]+)[,\s]+([-\d.e]+)/);
-  if (!mMatch) return null;
-  xs.push(parseFloat(mMatch[1]));
-  ys.push(parseFloat(mMatch[2]));
-
-  let m;
-  // Absolute C: endpoint is 5th and 6th of the six numbers per triplet
-  const cRe = /C\s*[-\d.e]+[,\s]+[-\d.e]+[,\s]+[-\d.e]+[,\s]+[-\d.e]+[,\s]+([-\d.e]+)[,\s]+([-\d.e]+)/g;
-  while ((m = cRe.exec(d)) !== null) { xs.push(parseFloat(m[1])); ys.push(parseFloat(m[2])); }
-
-  // Absolute L
-  const lRe = /L\s*([-\d.e]+)[,\s]+([-\d.e]+)/g;
-  while ((m = lRe.exec(d)) !== null) { xs.push(parseFloat(m[1])); ys.push(parseFloat(m[2])); }
-
-  // Absolute Q: endpoint is 3rd and 4th of four numbers
-  const qRe = /Q\s*[-\d.e]+[,\s]+[-\d.e]+[,\s]+([-\d.e]+)[,\s]+([-\d.e]+)/g;
-  while ((m = qRe.exec(d)) !== null) { xs.push(parseFloat(m[1])); ys.push(parseFloat(m[2])); }
-
-  if (xs.length === 0) return null;
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  if (!isFinite(minX)) return null;
-
-  const w = maxX - minX, h = maxY - minY;
+  const bounds = calculatePathDataBounds(d);
+  if (!bounds) return null;
   return {
-    cx: parseFloat(((minX + maxX) / 2).toFixed(3)),
-    cy: parseFloat(((minY + maxY) / 2).toFixed(3)),
-    r: Math.max(parseFloat(((w + h) / 4).toFixed(3)), 1),
+    cx: parseFloat((bounds.x + bounds.width / 2).toFixed(3)),
+    cy: parseFloat((bounds.y + bounds.height / 2).toFixed(3)),
+    r: Math.max(parseFloat(((bounds.width + bounds.height) / 4).toFixed(3)), 1),
   };
 }
 

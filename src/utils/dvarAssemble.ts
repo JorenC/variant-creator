@@ -10,6 +10,7 @@ import type {
   AssembleDvarInput,
   DominanceRulesData,
   ExtraUnit,
+  HomeNationsData,
   PhaseProgressionData,
   ProvincesFormValues,
   VictoryConditionsData,
@@ -33,6 +34,93 @@ export function toSlug(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Orders phase transitions into chain order by following each transition's
+ * `to` phase to the transition that starts from it.
+ *
+ * The wizard represents the progression as an ordered list and re-links each
+ * entry to the next on export, so importing a file whose transitions are
+ * listed in any other (equally valid) order would silently rewire the state
+ * machine. Returns the input order unchanged when no unambiguous chain exists
+ * (broken links, branches, or conditional transitions).
+ */
+export function orderTransitionsIntoChain<
+  T extends {
+    from: { season: string; type: string };
+    to: { season: string; type: string };
+    condition?: unknown;
+  }
+>(transitions: T[], start?: { season: string; type: string }): T[] {
+  if (transitions.length <= 1) return transitions;
+  if (transitions.some(t => t.condition)) return transitions;
+
+  const byFrom = new Map<string, T>();
+  for (const t of transitions) {
+    const key = `${t.from.season}/${t.from.type}`;
+    if (byFrom.has(key)) return transitions;
+    byFrom.set(key, t);
+  }
+
+  const startKey = start ? `${start.season}/${start.type}` : `${transitions[0].from.season}/${transitions[0].from.type}`;
+  let current = byFrom.get(startKey) ?? transitions[0];
+
+  const ordered: T[] = [];
+  const visited = new Set<string>();
+  for (let i = 0; i < transitions.length; i++) {
+    const key = `${current.from.season}/${current.from.type}`;
+    if (visited.has(key)) return transitions;
+    visited.add(key);
+    ordered.push(current);
+    const next = byFrom.get(`${current.to.season}/${current.to.type}`);
+    if (!next) return ordered.length === transitions.length ? ordered : transitions;
+    current = next;
+  }
+  return ordered.length === transitions.length ? ordered : transitions;
+}
+
+/**
+ * Brings home-nation assignments and extra units back in sync after the
+ * province list changed (SC flags or terrain types edited on an earlier step).
+ * Without this, a fleet assigned to a province that is later retyped to land
+ * survives in stale state and is exported as an illegal starting unit.
+ */
+export function reconcileHomeNationsWithProvinces(
+  homeNations: HomeNationsData,
+  extraUnits: ExtraUnit[] | null,
+  provinces: ProvincesFormValues["provinces"],
+): { homeNations: HomeNationsData; extraUnits: ExtraUnit[] | null } {
+  const byId = new Map(provinces.map(p => [p.id, p]));
+
+  const unitAllowed = (unit: "army" | "fleet" | null, type: string): boolean =>
+    unit === null || (unit === "army" ? type !== "sea" : type !== "land");
+
+  const nextHomeNations: HomeNationsData = {};
+  for (const p of provinces) {
+    if (!p.supplyCenter) continue;
+    const entry = homeNations[p.id] ?? { nation: "", startingUnit: null, startingCoast: null };
+    const startingUnit = unitAllowed(entry.startingUnit, p.type) ? entry.startingUnit : null;
+    const coastValid =
+      startingUnit === "fleet" &&
+      entry.startingCoast !== null &&
+      p.namedCoasts.some(c => c.id === entry.startingCoast);
+    nextHomeNations[p.id] = {
+      nation: entry.nation,
+      startingUnit,
+      startingCoast: coastValid ? entry.startingCoast : null,
+    };
+  }
+
+  const nextExtraUnits = extraUnits?.map(eu => {
+    const p = eu.province ? byId.get(eu.province) : undefined;
+    if (!p) return { ...eu, province: "", unit: null, coast: null };
+    const unit = unitAllowed(eu.unit, p.type) ? eu.unit : null;
+    const coastValid = unit === "fleet" && eu.coast !== null && p.namedCoasts.some(c => c.id === eu.coast);
+    return { ...eu, unit, coast: coastValid ? eu.coast : null };
+  }) ?? null;
+
+  return { homeNations: nextHomeNations, extraUnits: nextExtraUnits };
 }
 
 /**
@@ -155,7 +243,9 @@ export function assembleDvar({
     .filter(([, e]) => e.enabled && e.provinceOccupier && e.provinceOccupier !== "empty")
     .map(([provinceId, e]) => ({
       province: provinceId,
-      nation: e.provinceOccupier,
+      // "neutral" is the form's internal sentinel; the file format spells it
+      // "Neutral" (matching dependency entries and existing variants).
+      nation: e.provinceOccupier === "neutral" ? "Neutral" : e.provinceOccupier,
       dependencies: Object.entries(e.conditions)
         .map(([depProvince, nation]) => ({
           province: depProvince,

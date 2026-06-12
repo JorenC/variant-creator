@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
@@ -44,6 +44,19 @@ export const NationsForm = forwardRef<NationsFormHandle, NationsFormProps>(funct
   const { fields, append, remove } = useFieldArray({ control, name: "nations" });
   const watchedNations = watch("nations");
 
+  // Nations that arrived with an ID (pre-filled from an existing .dvar) keep it
+  // even when renamed: every supply center, unit, and dominance rule in the
+  // pre-filled data references that ID, so regenerating it from the new name
+  // would orphan them all. Only nations created in this session auto-slug.
+  const lockedIdKeys = useRef<Set<string> | null>(null);
+  if (lockedIdKeys.current === null) {
+    lockedIdKeys.current = new Set(
+      fields
+        .filter((_, i) => (defaultValues?.nations?.[i]?.id ?? "") !== "")
+        .map(f => f.id)
+    );
+  }
+
   return (
     <form
       id={formId}
@@ -71,7 +84,9 @@ export const NationsForm = forwardRef<NationsFormHandle, NationsFormProps>(funct
               <Input
                 {...register(`nations.${index}.name`, {
                   onChange: e => {
-                    setValue(`nations.${index}.id`, toSlug(e.target.value));
+                    if (!lockedIdKeys.current?.has(field.id)) {
+                      setValue(`nations.${index}.id`, toSlug(e.target.value));
+                    }
                   },
                 })}
                 placeholder="Nation name"
@@ -80,6 +95,11 @@ export const NationsForm = forwardRef<NationsFormHandle, NationsFormProps>(funct
               {errors.nations?.[index]?.name && (
                 <p className="mt-1 text-xs text-destructive">
                   {errors.nations[index]?.name?.message}
+                </p>
+              )}
+              {errors.nations?.[index]?.id && (
+                <p className="mt-1 text-xs text-destructive">
+                  {errors.nations[index]?.id?.message}
                 </p>
               )}
             </div>

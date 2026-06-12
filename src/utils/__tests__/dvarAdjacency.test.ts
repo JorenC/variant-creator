@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Paths that share the same bracketed tag, e.g. "[adj-ab]", are treated as intersecting.
-vi.mock("../geometry", () => ({
-  detectPathIntersections: vi.fn((pathA: string, pathB: string) => {
-    const tagA = pathA.match(/\[([^\]]+)\]/)?.[1];
-    const tagB = pathB.match(/\[([^\]]+)\]/)?.[1];
-    return tagA !== undefined && tagA === tagB;
-  }),
-}));
+vi.mock("../geometry", () => {
+  const tagsOf = (paths: string[]) =>
+    paths.flatMap(p => [...p.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]));
+  return {
+    prepareShape: vi.fn((paths: string[]) => ({ tags: tagsOf(paths) })),
+    preparedShapesIntersect: vi.fn(
+      (a: { tags: string[] }, b: { tags: string[] }) =>
+        a.tags.some(tag => b.tags.includes(tag))
+    ),
+    disposeShape: vi.fn(),
+  };
+});
 
 import {
   buildEmptyDvarAdjacencyMap,

@@ -98,30 +98,65 @@ function parseTransformAttr(attr: string): Matrix {
 
 // ─── Path data transformer ────────────────────────────────────────────────────
 
-interface PathCmd { cmd: string; args: number[] }
+export interface PathCmd { cmd: string; args: number[] }
+
+// Scans one SVG number starting at `i` (sign, decimals, optional exponent).
+// Stops at a second "." or a "-"/"+" mid-number, so compact syntax like
+// "10-20" and ".5.5" (legal per the SVG path grammar) splits correctly —
+// String.split on separators would yield NaN for those.
+function readNumber(s: string, i: number): { value: number; next: number } | null {
+  while (i < s.length && /[\s,]/.test(s[i])) i++;
+  if (i >= s.length) return null;
+  const start = i;
+  if (s[i] === "+" || s[i] === "-") i++;
+  let seenDot = false;
+  while (i < s.length && (/\d/.test(s[i]) || (s[i] === "." && !seenDot))) {
+    if (s[i] === ".") seenDot = true;
+    i++;
+  }
+  if (i < s.length && (s[i] === "e" || s[i] === "E")) {
+    const save = i;
+    i++;
+    if (i < s.length && (s[i] === "+" || s[i] === "-")) i++;
+    if (i < s.length && /\d/.test(s[i])) {
+      while (i < s.length && /\d/.test(s[i])) i++;
+    } else {
+      i = save;
+    }
+  }
+  if (i === start || (i === start + 1 && !/\d/.test(s[start]))) return null;
+  const value = parseFloat(s.slice(start, i));
+  return Number.isNaN(value) ? null : { value, next: i };
+}
+
+function parseNumberList(raw: string): number[] {
+  const nums: number[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    const r = readNumber(raw, i);
+    if (r === null) break;
+    nums.push(r.value);
+    i = r.next;
+  }
+  return nums;
+}
 
 function parseArcArgs(raw: string): number[] {
   const nums: number[] = [];
   let i = 0;
-  const s = raw.trim();
+  const s = raw;
 
   const skipSep = () => { while (i < s.length && /[\s,]/.test(s[i])) i++; };
   const readNum = (): number | null => {
-    skipSep();
-    if (i >= s.length) return null;
-    const start = i;
-    if (s[i] === "+" || s[i] === "-") i++;
-    while (i < s.length && /[\d.]/.test(s[i])) i++;
-    if (i < s.length && (s[i] === "e" || s[i] === "E")) {
-      i++;
-      if (i < s.length && (s[i] === "+" || s[i] === "-")) i++;
-      while (i < s.length && /\d/.test(s[i])) i++;
-    }
-    return i === start ? null : parseFloat(s.slice(start, i));
+    const r = readNumber(s, i);
+    if (r === null) return null;
+    i = r.next;
+    return r.value;
   };
+  // Arc flags are single characters and may be unseparated from the next number.
   const readFlag = (): number | null => {
     skipSep();
-    if (i >= s.length) return null;
+    if (i >= s.length || (s[i] !== "0" && s[i] !== "1")) return null;
     return parseInt(s[i++]);
   };
 
@@ -140,7 +175,7 @@ function parseArcArgs(raw: string): number[] {
   return nums;
 }
 
-function tokenizePathData(d: string): PathCmd[] {
+export function tokenizePathData(d: string): PathCmd[] {
   const result: PathCmd[] = [];
   const parts = d.split(/([MmZzLlHhVvCcSsQqTtAa])/).filter(s => s !== "");
 
@@ -164,9 +199,7 @@ function tokenizePathData(d: string): PathCmd[] {
     else if (upper === "A") n = 7;
     else continue;
 
-    const nums = upper === "A"
-      ? parseArcArgs(rawArgs)
-      : rawArgs.split(/[\s,]+/).filter(Boolean).map(Number);
+    const nums = upper === "A" ? parseArcArgs(rawArgs) : parseNumberList(rawArgs);
 
     let isFirst = true;
     for (let j = 0; j + n <= nums.length; j += n) {
@@ -181,6 +214,20 @@ function tokenizePathData(d: string): PathCmd[] {
 
 function transformPathData(d: string, m: Matrix): string {
   if (isIdentity(m)) return d;
+  return rewritePathData(d, m);
+}
+
+/**
+ * Rewrites path data into absolute commands without moving it. Needed before
+ * concatenating multiple `d` strings into one compound path: a leading relative
+ * `m` is absolute at the start of its own path but becomes relative to the
+ * previous subpath's endpoint once concatenated, silently shifting the shape.
+ */
+export function pathToAbsolute(d: string): string {
+  return rewritePathData(d, identity());
+}
+
+function rewritePathData(d: string, m: Matrix): string {
   const tokens = tokenizePathData(d);
   const out: string[] = [];
   let cx = 0, cy = 0, sx = 0, sy = 0;
@@ -293,6 +340,52 @@ function transformPathData(d: string, m: Matrix): string {
 
 // ─── Per-element coordinate transformation ────────────────────────────────────
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// True when the matrix maps axis-aligned shapes to axis-aligned shapes
+// (translate + scale only, no rotation/skew components).
+function isAxisAligned(m: Matrix): boolean {
+  return Math.abs(m[1]) < 1e-9 && Math.abs(m[2]) < 1e-9;
+}
+
+const SHAPE_GEOMETRY_ATTRS = new Set(["x", "y", "width", "height", "cx", "cy", "r", "rx", "ry"]);
+
+// Replaces a rect/circle/ellipse with an equivalent <path>, so that a matrix
+// with rotation/skew can be baked into its coordinates. Axis-aligned shape
+// attributes cannot express a rotated shape, so transforming x/y + width/height
+// in place would silently change the geometry.
+function shapeToPathElement(el: Element, localD: string): Element {
+  const pathEl = el.ownerDocument.createElementNS(SVG_NS, "path");
+  for (const attr of Array.from(el.attributes)) {
+    if (!SHAPE_GEOMETRY_ATTRS.has(attr.name)) {
+      pathEl.setAttribute(attr.name, attr.value);
+    }
+  }
+  pathEl.setAttribute("d", localD);
+  return pathEl;
+}
+
+function rectToLocalPathD(el: Element): string {
+  const x = parseFloat(el.getAttribute("x") ?? "0");
+  const y = parseFloat(el.getAttribute("y") ?? "0");
+  const w = parseFloat(el.getAttribute("width") ?? "0");
+  const h = parseFloat(el.getAttribute("height") ?? "0");
+  // Corner rounding is dropped: rx/ry cannot survive a rotation as a rect
+  // anyway, and the outline corners are what matters for map geometry.
+  return `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
+}
+
+function ellipseToLocalPathD(el: Element): string {
+  const cx = parseFloat(el.getAttribute("cx") ?? "0");
+  const cy = parseFloat(el.getAttribute("cy") ?? "0");
+  const isCircle = el.tagName.replace(/^.*:/, "").toLowerCase() === "circle";
+  const rx = isCircle
+    ? parseFloat(el.getAttribute("r") ?? "0")
+    : parseFloat(el.getAttribute("rx") ?? "0");
+  const ry = isCircle ? rx : parseFloat(el.getAttribute("ry") ?? "0");
+  return `M ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} Z`;
+}
+
 function applyXY(el: Element, m: Matrix): void {
   if (isIdentity(m)) return;
   const x = el.getAttribute("x");
@@ -306,8 +399,11 @@ function applyXY(el: Element, m: Matrix): void {
   }
 }
 
-function applyToElement(el: Element, m: Matrix): void {
-  if (isIdentity(m)) return;
+// Bakes `m` into the element's coordinate attributes. Returns a replacement
+// element when the shape had to be converted to a <path> (rotation/skew on an
+// axis-aligned shape); the caller must swap it into the tree.
+function applyToElement(el: Element, m: Matrix): Element | null {
+  if (isIdentity(m)) return null;
   const tag = el.tagName.replace(/^.*:/, "").toLowerCase();
 
   switch (tag) {
@@ -317,6 +413,11 @@ function applyToElement(el: Element, m: Matrix): void {
       break;
     }
     case "rect": {
+      if (!isAxisAligned(m)) {
+        const pathEl = shapeToPathElement(el, rectToLocalPathD(el));
+        pathEl.setAttribute("d", transformPathData(pathEl.getAttribute("d")!, m));
+        return pathEl;
+      }
       const x = parseFloat(el.getAttribute("x") ?? "0");
       const y = parseFloat(el.getAttribute("y") ?? "0");
       const [nx, ny] = applyPt(m, x, y);
@@ -331,6 +432,11 @@ function applyToElement(el: Element, m: Matrix): void {
       break;
     }
     case "circle": {
+      if (!isAxisAligned(m)) {
+        const pathEl = shapeToPathElement(el, ellipseToLocalPathD(el));
+        pathEl.setAttribute("d", transformPathData(pathEl.getAttribute("d")!, m));
+        return pathEl;
+      }
       const [ncx, ncy] = applyPt(m,
         parseFloat(el.getAttribute("cx") ?? "0"),
         parseFloat(el.getAttribute("cy") ?? "0"),
@@ -344,6 +450,11 @@ function applyToElement(el: Element, m: Matrix): void {
       break;
     }
     case "ellipse": {
+      if (!isAxisAligned(m)) {
+        const pathEl = shapeToPathElement(el, ellipseToLocalPathD(el));
+        pathEl.setAttribute("d", transformPathData(pathEl.getAttribute("d")!, m));
+        return pathEl;
+      }
       const [ncx, ncy] = applyPt(m,
         parseFloat(el.getAttribute("cx") ?? "0"),
         parseFloat(el.getAttribute("cy") ?? "0"),
@@ -385,6 +496,7 @@ function applyToElement(el: Element, m: Matrix): void {
       break;
     }
   }
+  return null;
 }
 
 // ─── Text element special handling ───────────────────────────────────────────
@@ -447,7 +559,12 @@ function resolveElement(el: Element, ancestorMatrix: Matrix): void {
   const own = attr ? parseTransformAttr(attr) : identity();
   const total = isIdentity(own) ? ancestorMatrix : multiply(ancestorMatrix, own);
 
-  applyToElement(el, total);
+  const replacement = applyToElement(el, total);
+  if (replacement) {
+    replacement.removeAttribute("transform");
+    el.parentNode?.replaceChild(replacement, el);
+    return;
+  }
   el.removeAttribute("transform");
 
   for (const child of Array.from(el.children)) {
