@@ -1,4 +1,6 @@
 import { useState, useRef, useId } from "react";
+import { useUnsavedWorkGuard } from "@/hooks/useUnsavedWorkGuard";
+import { sanitizeDvarImport } from "@/utils/dvarImport";
 import { AppHeader } from "@/components/common/AppHeader";
 import {
   Upload,
@@ -19,6 +21,8 @@ import {
   buildInitialProvinces,
   buildInitialDominanceRules,
   assemblePartialDvar,
+  orderTransitionsIntoChain,
+  reconcileHomeNationsWithProvinces,
   DEFAULT_PHASE_ENTRIES,
   DEFAULT_VICTORY_CONDITIONS,
 } from "@/utils/dvarAssemble";
@@ -88,6 +92,8 @@ export function DvarCreator() {
   const dvarInputRef = useRef<HTMLInputElement>(null);
   const [pendingDvar, setPendingDvar] = useState<DvarJson | null>(null);
   const [pendingDvarFileName, setPendingDvarFileName] = useState<string | null>(null);
+  const [pendingDvarDropped, setPendingDvarDropped] = useState<string[]>([]);
+  const [exportDownloaded, setExportDownloaded] = useState(false);
   const [dvarError, setDvarError] = useState<string | null>(null);
   const [reconcileMismatches, setReconcileMismatches] = useState<ReconcileMismatches | null>(null);
   const [provinceReconcileMap, setProvinceReconcileMap] = useState<ReconcileMap>({});
@@ -103,6 +109,9 @@ export function DvarCreator() {
   const phaseProgressionRef = useRef<PhaseProgressionFormHandle>(null);
   const victoryConditionsRef = useRef<VictoryConditionsFormHandle>(null);
   const adjudicationModifiersRef = useRef<AdjudicationModifiersFormHandle>(null);
+  const hasWork = step !== "upload" || svgContent !== null || pendingDvar !== null;
+  const { allowNavigation } = useUnsavedWorkGuard(hasWork && !(step === "export" && exportDownloaded));
+
   const basicInfoFormId = useId();
   const nationsFormId = useId();
   const provinceNamesFormId = useId();
@@ -115,9 +124,16 @@ export function DvarCreator() {
     }
     try {
       const content = await file.text();
-      const parsed = JSON.parse(content) as DvarJson;
-      setPendingDvar(parsed);
+      const sanitized = sanitizeDvarImport(JSON.parse(content));
+      if (!sanitized) {
+        setPendingDvar(null);
+        setPendingDvarFileName(null);
+        setDvarError("Invalid .dvar file — expected a JSON object.");
+        return;
+      }
+      setPendingDvar(sanitized.dvar);
       setPendingDvarFileName(file.name);
+      setPendingDvarDropped(sanitized.dropped);
       setDvarError(null);
     } catch {
       setPendingDvar(null);
@@ -213,8 +229,15 @@ export function DvarCreator() {
     }
     setDominanceRulesData(baseDR);
 
-    // phase progression: each entry[i] = { from.season, from.type, to.yearDelta }
-    const transitions = dvar.phaseProgression?.transitions ?? [];
+    // phase progression: each entry[i] = { from.season, from.type, to.yearDelta }.
+    // The wizard re-links entries in list order on export, so order the
+    // transitions into their actual from→to chain first — the file format
+    // makes no ordering guarantee.
+    const phase = dvar.initialState?.phase;
+    const transitions = orderTransitionsIntoChain(
+      dvar.phaseProgression?.transitions ?? [],
+      phase?.season && phase?.type ? { season: phase.season, type: phase.type } : undefined
+    );
     const phaseEntries: PhaseProgressionData = transitions.map(t => ({
       season: t.from.season,
       type: t.from.type as PhaseType,
@@ -229,7 +252,7 @@ export function DvarCreator() {
     // adjudication modifiers
     setAdjudicationModifiersData(dvar.adjudicationModifiers ?? []);
 
-    setPreFillWarnings(collectPreFillWarnings(dvar));
+    setPreFillWarnings([...pendingDvarDropped, ...collectPreFillWarnings(dvar)]);
   };
 
   const processFile = async (file: File) => {
@@ -253,29 +276,34 @@ export function DvarCreator() {
       setError(null);
       setFileName(file.name);
       setSvgContent(content);
-      const parsed = parseDsvg(content);
-      setParsedDsvgState(parsed);
-
-      if (pendingDvar) {
-        const mismatches = computeMismatches(pendingDvar, parsed);
-        if (mismatches.missingProvinces.length > 0 || mismatches.missingCoasts.length > 0) {
-          const initProvinceMap: ReconcileMap = {};
-          for (const id of mismatches.missingProvinces) initProvinceMap[id] = null;
-          const initCoastMap: ReconcileMap = {};
-          for (const id of mismatches.missingCoasts) initCoastMap[id] = null;
-          setReconcileMismatches(mismatches);
-          setProvinceReconcileMap(initProvinceMap);
-          setCoastReconcileMap(initCoastMap);
-          setStep("reconcile");
-        } else {
-          applyDvarPreFill(pendingDvar);
-          setStep("basic-info");
-        }
-      } else {
-        setStep("basic-info");
-      }
+      setParsedDsvgState(parseDsvg(content));
     } catch {
       setError("Could not read the file. Please try again.");
+    }
+  };
+
+  // The upload step is gated behind an explicit Continue so the optional dVAR
+  // can still be attached after the dSVG — auto-advancing on dSVG upload made
+  // the pre-fill slot unreachable for anyone who uploaded in the other order.
+  const handleUploadContinue = () => {
+    if (!parsedDsvg) return;
+    if (pendingDvar) {
+      const mismatches = computeMismatches(pendingDvar, parsedDsvg);
+      if (mismatches.missingProvinces.length > 0 || mismatches.missingCoasts.length > 0) {
+        const initProvinceMap: ReconcileMap = {};
+        for (const id of mismatches.missingProvinces) initProvinceMap[id] = null;
+        const initCoastMap: ReconcileMap = {};
+        for (const id of mismatches.missingCoasts) initCoastMap[id] = null;
+        setReconcileMismatches(mismatches);
+        setProvinceReconcileMap(initProvinceMap);
+        setCoastReconcileMap(initCoastMap);
+        setStep("reconcile");
+      } else {
+        applyDvarPreFill(pendingDvar);
+        setStep("basic-info");
+      }
+    } else {
+      setStep("basic-info");
     }
   };
 
@@ -342,9 +370,10 @@ export function DvarCreator() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
+    e.target.value = "";
   };
 
-  const handleClear = () => {
+  const resetAll = () => {
     setStep("upload");
     setFileName(null);
     setSvgContent(null);
@@ -369,11 +398,125 @@ export function DvarCreator() {
     setProvinceReconcileMap({});
     setCoastReconcileMap({});
     setPreFillWarnings([]);
+    setPendingDvarDropped([]);
+    setExportDownloaded(false);
+  };
+
+  const handleClear = () => {
+    if (
+      hasWork &&
+      !window.confirm("Clearing discards everything you've entered in this wizard. Clear anyway?")
+    ) {
+      return;
+    }
+    resetAll();
+  };
+
+  // Reads the active step's in-progress form values through its imperative
+  // handle, commits them to wizard state, and returns the updated snapshot.
+  // Used by both Back navigation (so going back never discards edits) and
+  // "Save progress".
+  const captureCurrentStep = () => {
+    let currentBasicInfo = basicInfo;
+    let currentNations = nations;
+    let currentProvincesData = provincesData;
+    let currentHomeNationsData = homeNationsData;
+    let currentExtraUnitsData = extraUnitsData;
+    let currentAdjacenciesData = adjacenciesData;
+    let currentDominanceRulesData = dominanceRulesData;
+    let currentPhaseProgressionData = phaseProgressionData;
+    let currentVictoryConditionsData = victoryConditionsData;
+    let currentAdjudicationModifiersData = adjudicationModifiersData;
+
+    if (step === "basic-info" && basicInfoRef.current) {
+      currentBasicInfo = basicInfoRef.current.getValues();
+      setBasicInfo(currentBasicInfo);
+    } else if (step === "nations" && nationsRef.current) {
+      currentNations = nationsRef.current.getValues();
+      setNations(currentNations);
+    } else if (step === "province-names" && provinceNamesRef.current && parsedDsvg) {
+      const formValues = provinceNamesRef.current.getValues();
+      const base = (provincesData && provincesData.provinces.length > 0)
+        ? provincesData.provinces
+        : buildInitialProvinces(parsedDsvg);
+      const nameMap = new Map(formValues.provinces.map(p => [p.id, p]));
+      currentProvincesData = {
+        provinces: base.map(p => {
+          const n = nameMap.get(p.id);
+          return {
+            ...p,
+            name: n?.name ?? p.name,
+            namedCoasts: p.namedCoasts.map((c, j) => ({
+              ...c,
+              name: n?.namedCoasts[j]?.name ?? c.name,
+            })),
+          };
+        }),
+      };
+      setProvincesData(currentProvincesData);
+    } else if (step === "province-types" && provinceTypesRef.current && parsedDsvg) {
+      const formValues = provinceTypesRef.current.getValues();
+      const base = (provincesData && provincesData.provinces.length > 0)
+        ? provincesData.provinces
+        : buildInitialProvinces(parsedDsvg);
+      const typeMap = new Map(formValues.provinces.map(p => [p.id, p]));
+      currentProvincesData = {
+        provinces: base.map(p => {
+          const t = typeMap.get(p.id);
+          return { ...p, type: t?.type ?? p.type, supplyCenter: t?.supplyCenter ?? p.supplyCenter };
+        }),
+      };
+      setProvincesData(currentProvincesData);
+    } else if (step === "home-nations" && homeNationsRef.current) {
+      const vals = homeNationsRef.current.getValues();
+      currentHomeNationsData = vals.assignments;
+      currentExtraUnitsData = vals.extraUnits;
+      setHomeNationsData(currentHomeNationsData);
+      setExtraUnitsData(currentExtraUnitsData);
+    } else if (step === "adjacencies" && adjacenciesRef.current) {
+      currentAdjacenciesData = adjacenciesRef.current.getValues();
+      setAdjacenciesData(currentAdjacenciesData);
+    } else if (step === "dominance-rules" && dominanceRulesRef.current) {
+      currentDominanceRulesData = dominanceRulesRef.current.getValues();
+      setDominanceRulesData(currentDominanceRulesData);
+    } else if (step === "phase-progression" && phaseProgressionRef.current) {
+      currentPhaseProgressionData = phaseProgressionRef.current.getValues();
+      setPhaseProgressionData(currentPhaseProgressionData);
+    } else if (step === "victory-conditions" && victoryConditionsRef.current) {
+      currentVictoryConditionsData = victoryConditionsRef.current.getValues();
+      setVictoryConditionsData(currentVictoryConditionsData);
+    } else if (step === "adjudication-modifiers" && adjudicationModifiersRef.current) {
+      currentAdjudicationModifiersData = adjudicationModifiersRef.current.getValues();
+      setAdjudicationModifiersData(currentAdjudicationModifiersData);
+    }
+
+    return {
+      basicInfo: currentBasicInfo,
+      nations: currentNations,
+      provincesData: currentProvincesData,
+      homeNationsData: currentHomeNationsData,
+      extraUnitsData: currentExtraUnitsData,
+      adjacenciesData: currentAdjacenciesData,
+      dominanceRulesData: currentDominanceRulesData,
+      phaseProgressionData: currentPhaseProgressionData,
+      victoryConditionsData: currentVictoryConditionsData,
+      adjudicationModifiersData: currentAdjudicationModifiersData,
+    };
   };
 
   const handleBack = () => {
-    if (step === "reconcile") handleClear();
-    if (step === "basic-info") handleClear();
+    if (step === "reconcile" || step === "basic-info") {
+      if (
+        window.confirm(
+          "Going back to the upload step clears everything you've entered in this wizard. Continue?"
+        )
+      ) {
+        resetAll();
+      }
+      return;
+    }
+    // Snapshot in-progress edits so going back never discards them.
+    captureCurrentStep();
     if (step === "nations") setStep("basic-info");
     if (step === "province-names") setStep("nations");
     if (step === "province-types") setStep("province-names");
@@ -432,14 +575,12 @@ export function DvarCreator() {
         ...merged.flatMap(p => p.namedCoasts.map(c => c.id)),
       ])
     );
-    setHomeNationsData(prev => {
-      if (prev !== null) return prev;
-      const initial: HomeNationsData = {};
-      for (const p of merged) {
-        if (p.supplyCenter) initial[p.id] = { nation: "", startingUnit: null, startingCoast: null };
-      }
-      return initial;
-    });
+    // Keep dependent unit data consistent with the (possibly re-edited)
+    // SC flags and terrain types: drop entries for de-flagged SCs, add
+    // blanks for new ones, and clear units that no longer fit the terrain.
+    const reconciled = reconcileHomeNationsWithProvinces(homeNationsData ?? {}, extraUnitsData, merged);
+    setHomeNationsData(reconciled.homeNations);
+    setExtraUnitsData(reconciled.extraUnits);
     setStep("home-nations");
   };
 
@@ -481,74 +622,13 @@ export function DvarCreator() {
   };
 
   const handleSaveProgress = () => {
-    let currentBasicInfo = basicInfo;
-    let currentNations = nations;
-    let currentProvincesData = provincesData;
-    let currentHomeNationsData = homeNationsData;
-    let currentExtraUnitsData = extraUnitsData;
-    let currentAdjacenciesData = adjacenciesData;
-    let currentDominanceRulesData = dominanceRulesData;
-    let currentPhaseProgressionData = phaseProgressionData;
-    let currentVictoryConditionsData = victoryConditionsData;
-    let currentAdjudicationModifiersData = adjudicationModifiersData;
-
-    if (step === "basic-info" && basicInfoRef.current) {
-      currentBasicInfo = basicInfoRef.current.getValues();
-    } else if (step === "nations" && nationsRef.current) {
-      currentNations = nationsRef.current.getValues();
-    } else if (step === "province-names" && provinceNamesRef.current && parsedDsvg) {
-      const formValues = provinceNamesRef.current.getValues();
-      const base = (provincesData && provincesData.provinces.length > 0)
-        ? provincesData.provinces
-        : buildInitialProvinces(parsedDsvg);
-      const nameMap = new Map(formValues.provinces.map(p => [p.id, p]));
-      currentProvincesData = {
-        provinces: base.map(p => {
-          const n = nameMap.get(p.id);
-          return {
-            ...p,
-            name: n?.name ?? p.name,
-            namedCoasts: p.namedCoasts.map((c, j) => ({
-              ...c,
-              name: n?.namedCoasts[j]?.name ?? c.name,
-            })),
-          };
-        }),
-      };
-    } else if (step === "province-types" && provinceTypesRef.current && parsedDsvg) {
-      const formValues = provinceTypesRef.current.getValues();
-      const base = (provincesData && provincesData.provinces.length > 0)
-        ? provincesData.provinces
-        : buildInitialProvinces(parsedDsvg);
-      const typeMap = new Map(formValues.provinces.map(p => [p.id, p]));
-      currentProvincesData = {
-        provinces: base.map(p => {
-          const t = typeMap.get(p.id);
-          return { ...p, type: t?.type ?? p.type, supplyCenter: t?.supplyCenter ?? p.supplyCenter };
-        }),
-      };
-    } else if (step === "home-nations" && homeNationsRef.current) {
-      const vals = homeNationsRef.current.getValues();
-      currentHomeNationsData = vals.assignments;
-      currentExtraUnitsData = vals.extraUnits;
-    } else if (step === "adjacencies" && adjacenciesRef.current) {
-      currentAdjacenciesData = adjacenciesRef.current.getValues();
-    } else if (step === "dominance-rules" && dominanceRulesRef.current) {
-      currentDominanceRulesData = dominanceRulesRef.current.getValues();
-    } else if (step === "phase-progression" && phaseProgressionRef.current) {
-      currentPhaseProgressionData = phaseProgressionRef.current.getValues();
-    } else if (step === "victory-conditions" && victoryConditionsRef.current) {
-      currentVictoryConditionsData = victoryConditionsRef.current.getValues();
-    } else if (step === "adjudication-modifiers" && adjudicationModifiersRef.current) {
-      currentAdjudicationModifiersData = adjudicationModifiersRef.current.getValues();
-    }
-
+    const snapshot = captureCurrentStep();
     const output = assemblePartialDvar(
-      currentBasicInfo, currentNations, currentProvincesData, currentHomeNationsData,
-      currentAdjacenciesData, currentDominanceRulesData, currentPhaseProgressionData,
-      currentVictoryConditionsData, currentAdjudicationModifiersData, currentExtraUnitsData,
+      snapshot.basicInfo, snapshot.nations, snapshot.provincesData, snapshot.homeNationsData,
+      snapshot.adjacenciesData, snapshot.dominanceRulesData, snapshot.phaseProgressionData,
+      snapshot.victoryConditionsData, snapshot.adjudicationModifiersData, snapshot.extraUnitsData,
     );
-    const id = basicInfo?.id?.trim() || fileName?.replace(/\.d\.svg$/i, "") || "draft";
+    const id = snapshot.basicInfo?.id?.trim() || fileName?.replace(/\.d\.svg$/i, "") || "draft";
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -608,15 +688,27 @@ export function DvarCreator() {
                   onDragLeave={e => { e.preventDefault(); setIsDragging(false); }}
                   className={cn(
                     "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-12 transition-colors",
-                    isDragging
+                    isDragging || svgContent
                       ? "border-primary bg-primary/5"
                       : "border-muted-foreground/25 hover:border-muted-foreground/50"
                   )}
                 >
-                  <Upload className="h-10 w-10 text-muted-foreground" />
-                  <p className="text-center text-sm text-muted-foreground">
-                    Drop a <span className="font-mono font-medium">.d.svg</span> file here or click to upload
-                  </p>
+                  {svgContent ? (
+                    <>
+                      <MapIcon className="h-10 w-10 text-primary" />
+                      <p className="text-center text-sm font-medium">{fileName}</p>
+                      <p className="text-center text-xs text-muted-foreground">
+                        {parsedDsvg?.provinceIds.length ?? 0} provinces detected
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-10 w-10 text-muted-foreground" />
+                      <p className="text-center text-sm text-muted-foreground">
+                        Drop a <span className="font-mono font-medium">.d.svg</span> file here or click to upload
+                      </p>
+                    </>
+                  )}
                 </div>
                 {error && (
                   <div className="flex items-center gap-2 text-sm text-destructive">
@@ -633,7 +725,7 @@ export function DvarCreator() {
                   <span className="text-xs font-normal text-muted-foreground">(optional — pre-fills all settings)</span>
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  If updating an existing variant, upload your previous <span className="font-mono">.dvar</span> first — then upload the dSVG to continue.
+                  If updating an existing variant, upload your previous <span className="font-mono">.dvar</span> alongside the dSVG — in either order.
                 </p>
                 <div
                   role="button"
@@ -659,7 +751,7 @@ export function DvarCreator() {
                     <>
                       <Download className="h-10 w-10 text-primary" />
                       <p className="text-center text-sm font-medium">{pendingDvarFileName}</p>
-                      <p className="text-center text-xs text-muted-foreground">Now upload your dSVG to continue</p>
+                      <p className="text-center text-xs text-muted-foreground">Will pre-fill your settings on continue</p>
                     </>
                   ) : (
                     <>
@@ -677,6 +769,13 @@ export function DvarCreator() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button disabled={!parsedDsvg} onClick={handleUploadContinue}>
+                Continue
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </>
         ) : step === "reconcile" ? (
@@ -881,6 +980,8 @@ export function DvarCreator() {
 
             {step === "export" && basicInfo && nations && provincesData && homeNationsData && adjacenciesData && dominanceRulesData && phaseProgressionData && victoryConditionsData && (
               <ExportStep
+                onDownloaded={() => setExportDownloaded(true)}
+                onLeaveApproved={allowNavigation}
                 basicInfo={basicInfo}
                 nations={nations}
                 provincesData={provincesData}
@@ -961,7 +1062,7 @@ export function DvarCreator() {
           ref={dvarInputRef}
           type="file"
           accept=".dvar"
-          onChange={e => { const f = e.target.files?.[0]; if (f) processDvarFile(f); }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) processDvarFile(f); e.target.value = ""; }}
           className="hidden"
           aria-label="Upload dVAR file"
         />

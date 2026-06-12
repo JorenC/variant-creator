@@ -201,8 +201,8 @@ export function calculatePathDataBounds(d: string): PathBoundsRect | null {
       case "T": {
         const [x, y] = abs ? [args[0], args[1]] : [cx + args[0], cy + args[1]];
         if (upper === "T") {
-          const c1x = prevQuadCx !== null ? 2 * cx - prevQuadCx : cx;
-          const c1y = prevQuadCy !== null ? 2 * cy - prevQuadCy : cy;
+          const c1x: number = prevQuadCx !== null ? 2 * cx - prevQuadCx : cx;
+          const c1y: number = prevQuadCy !== null ? 2 * cy - prevQuadCy : cy;
           addQuad(acc, cx, cy, c1x, c1y, x, y);
           nextQuadC = [c1x, c1y];
         } else {

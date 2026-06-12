@@ -22,18 +22,34 @@ interface PhaseProgressionFormProps {
   onSubmit: (data: PhaseProgressionData) => void;
 }
 
+interface PhaseRow extends PhaseEntry {
+  key: string;
+}
+
+let nextRowKey = 0;
+const makeRowKey = () => `phase-row-${nextRowKey++}`;
+
 export const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, PhaseProgressionFormProps>(
   ({ defaultValues, onSubmit }, ref) => {
-    const [entries, setEntries] = useState<PhaseProgressionData>(defaultValues);
+    const [entries, setEntries] = useState<PhaseRow[]>(
+      () => defaultValues.map(e => ({ ...e, key: makeRowKey() }))
+    );
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    const toData = (rows: PhaseRow[]): PhaseProgressionData =>
+      rows.map(({ season, type, yearDelta }) => ({ season, type, yearDelta }));
+
     useImperativeHandle(ref, () => ({
-      getValues: () => entries,
+      getValues: () => toData(entries),
       submit: () => {
         const seen = new Set<string>();
         for (const entry of entries) {
+          if (entry.season.trim() === "") {
+            setError("Every phase needs a season name.");
+            return;
+          }
           const key = `${entry.season}/${entry.type}`;
           if (seen.has(key)) {
             setError(`Duplicate phase: "${entry.season} / ${entry.type}" appears more than once. Each season and type combination must be unique.`);
@@ -42,7 +58,7 @@ export const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, Phase
           seen.add(key);
         }
         setError(null);
-        onSubmit(entries);
+        onSubmit(toData(entries));
       },
     }));
 
@@ -58,7 +74,7 @@ export const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, Phase
 
     const addEntry = () => {
       setError(null);
-      setEntries(prev => [...prev, { season: "Spring", type: "Movement", yearDelta: 0 }]);
+      setEntries(prev => [...prev, { key: makeRowKey(), season: "Spring", type: "Movement", yearDelta: 0 }]);
     };
 
     const handleDragStart = (index: number) => setDragIndex(index);
@@ -95,7 +111,7 @@ export const PhaseProgressionForm = forwardRef<PhaseProgressionFormHandle, Phase
         <div className="space-y-1">
           {entries.map((entry, index) => (
             <div
-              key={index}
+              key={entry.key}
               draggable
               onDragStart={() => handleDragStart(index)}
               onDragOver={e => handleDragOver(e, index)}

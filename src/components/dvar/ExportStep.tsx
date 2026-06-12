@@ -7,8 +7,15 @@ import { DvarSchema } from "@/utils/dvarSchema";
 import { validateDvarSemantics } from "@/utils/dvarValidate";
 import type { AssembleDvarInput, ExtraUnit, VictoryCondition } from "@/types/dvar";
 
-export function ExportStep(props: AssembleDvarInput) {
-  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData } = props;
+interface ExportStepProps extends AssembleDvarInput {
+  /** Notifies the wizard that a valid .dvar was downloaded (lifts leave guards). */
+  onDownloaded?: () => void;
+  /** Lifts the wizard's in-app navigation guard for the upcoming navigate. */
+  onLeaveApproved?: () => void;
+}
+
+export function ExportStep(props: ExportStepProps) {
+  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData, onDownloaded, onLeaveApproved } = props;
   const navigate = useNavigate();
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [hasDownloaded, setHasDownloaded] = useState(false);
@@ -22,6 +29,7 @@ export function ExportStep(props: AssembleDvarInput) {
     ) {
       return;
     }
+    onLeaveApproved?.();
     navigate("/upload-diplicity");
   };
 
@@ -50,6 +58,7 @@ export function ExportStep(props: AssembleDvarInput) {
       return;
     }
     setHasDownloaded(true);
+    onDownloaded?.();
     const json = JSON.stringify(output, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
