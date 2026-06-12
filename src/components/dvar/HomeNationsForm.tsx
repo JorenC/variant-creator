@@ -12,8 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { buildHomeNationPreviewSvg } from "@/utils/dvarPreview";
-import { aspectRatioFromSvg } from "@/utils/svgAspect";
+import { buildHomeNationPreviewSvg, extractDsvgProvinceShapes } from "@/utils/dvarPreview";
+import { aspectRatioFromViewBox } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
 import type { ExtraUnit, HomeNationsData, HomeNationsFormValues } from "@/types/dvar";
 
@@ -222,12 +222,18 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
       return colors;
     }, [assignment, nations]);
 
+    // The highlight is drawn as an inline overlay; baking it into the preview
+    // SVG would re-serialize and re-decode the whole map on every mouseover.
     const previewSvg = useMemo(
-      () => buildHomeNationPreviewSvg(svgContent, provinceColors, highlightedId),
-      [svgContent, provinceColors, highlightedId]
+      () => buildHomeNationPreviewSvg(svgContent, provinceColors, null),
+      [svgContent, provinceColors]
     );
     const previewUrl = useSvgObjectUrl(previewSvg);
-    const aspectRatio = useMemo(() => aspectRatioFromSvg(svgContent), [svgContent]);
+    const { shapes: provinceShapes, viewBox } = useMemo(
+      () => extractDsvgProvinceShapes(svgContent),
+      [svgContent]
+    );
+    const aspectRatio = useMemo(() => aspectRatioFromViewBox(viewBox), [viewBox]);
 
     const addExtraUnit = () => {
       setExtraUnits(prev => [
@@ -430,10 +436,20 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
           </div>
 
           <div className="sticky top-8 self-start">
-            <div className="w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+            <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
               {previewUrl && (
-                <img src={previewUrl} alt="Map preview" className="h-full w-full object-contain" />
+                <img src={previewUrl} alt="Map preview" className="absolute inset-0 h-full w-full object-contain" />
               )}
+              <svg viewBox={viewBox} className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}>
+                {highlightedId &&
+                  provinceShapes
+                    .filter(s => s.id === highlightedId)
+                    .map(shape =>
+                      shape.paths.map((d, i) => (
+                        <path key={i} d={d} fill="#fde047" fillOpacity={0.7} />
+                      ))
+                    )}
+              </svg>
             </div>
           </div>
         </div>

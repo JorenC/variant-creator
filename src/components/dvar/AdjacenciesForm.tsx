@@ -154,6 +154,14 @@ export const AdjacenciesForm = forwardRef<AdjacenciesFormHandle, AdjacenciesForm
     );
 
     const handleAutoDetect = () => {
+      if (
+        totalAdjacencies > 0 &&
+        !window.confirm(
+          "Auto-detect replaces all existing connections, including ones you added or edited manually. Replace them?"
+        )
+      ) {
+        return;
+      }
       const { shapes: coastShapes } = extractDsvgNamedCoastShapes(svgContent);
       const namedCoastShapesWithParent = coastShapes.map(s => ({
         ...s,

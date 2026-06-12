@@ -12,9 +12,14 @@ export function detectSCProvinces(svgContent: string): DetectSCProvincesResult {
   const detected = new Set<string>();
   const skipped: string[] = [];
 
+  // Parse as XML and import the node rather than assigning innerHTML: the SVG
+  // is user-supplied, and HTML parsing would activate embedded event handlers.
+  const parsed = new DOMParser().parseFromString(svgContent, "image/svg+xml");
+  if (parsed.querySelector("parsererror")) return { detected, skipped };
+
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;left:-99999px;top:-99999px;visibility:hidden";
-  container.innerHTML = svgContent;
+  container.appendChild(document.importNode(parsed.documentElement, true));
   document.body.appendChild(container);
 
   try {

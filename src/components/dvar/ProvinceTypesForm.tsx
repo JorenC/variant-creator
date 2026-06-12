@@ -5,7 +5,7 @@ import { AlertCircle, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { buildProvincePreviewSvg } from "@/utils/dvarPreview";
+import { buildProvincePreviewSvg, extractDsvgProvinceShapes } from "@/utils/dvarPreview";
 import { detectSCProvinces } from "@/utils/dvarScDetect";
 import { aspectRatioFromSvg } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
@@ -53,6 +53,14 @@ export const ProvinceTypesForm = forwardRef<ProvinceTypesFormHandle, ProvinceTyp
   const [scSkipped, setScSkipped] = useState<string[]>([]);
 
   const handleAutoDetectSCs = () => {
+    if (
+      watchedProvinces.some(p => p.supplyCenter) &&
+      !window.confirm(
+        "Auto-detect replaces all supply-center checkboxes, including ones you set manually. Replace them?"
+      )
+    ) {
+      return;
+    }
     const { detected, skipped } = detectSCProvinces(svgContent);
     defaultValues.provinces.forEach((province, i) => {
       setValue(`provinces.${i}.supplyCenter`, detected.has(province.id));
@@ -69,11 +77,17 @@ export const ProvinceTypesForm = forwardRef<ProvinceTypesFormHandle, ProvinceTyp
     return map;
   }, [watchedProvinces]);
 
+  // The highlight is drawn as an inline overlay; baking it into the preview
+  // SVG would re-serialize and re-decode the whole map on every mouseover.
   const previewSvg = useMemo(
-    () => buildProvincePreviewSvg(svgContent, highlightedId, typeColorMap),
-    [svgContent, highlightedId, typeColorMap]
+    () => buildProvincePreviewSvg(svgContent, null, typeColorMap),
+    [svgContent, typeColorMap]
   );
   const previewUrl = useSvgObjectUrl(previewSvg);
+  const { shapes: provinceShapes, viewBox } = useMemo(
+    () => extractDsvgProvinceShapes(svgContent),
+    [svgContent]
+  );
   const aspectRatio = useMemo(() => aspectRatioFromSvg(svgContent), [svgContent]);
 
   const handleGroupFocus = (id: string) => {
@@ -183,8 +197,18 @@ export const ProvinceTypesForm = forwardRef<ProvinceTypesFormHandle, ProvinceTyp
           </div>
         </div>
         <div className="sticky top-8 self-start">
-          <div className="w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
-            {previewUrl && <img src={previewUrl} alt="Map preview" className="h-full w-full object-contain" />}
+          <div className="relative w-full overflow-hidden rounded-lg border" style={{ aspectRatio }}>
+            {previewUrl && <img src={previewUrl} alt="Map preview" className="absolute inset-0 h-full w-full object-contain" />}
+            <svg viewBox={viewBox} className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}>
+              {highlightedId &&
+                provinceShapes
+                  .filter(s => s.id === highlightedId)
+                  .map(shape =>
+                    shape.paths.map((d, i) => (
+                      <path key={i} d={d} fill="#fde047" fillOpacity={0.7} />
+                    ))
+                  )}
+            </svg>
           </div>
         </div>
       </div>
