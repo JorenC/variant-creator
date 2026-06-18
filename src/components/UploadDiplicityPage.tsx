@@ -59,7 +59,7 @@ export function UploadDiplicityPage() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h2 className="text-xl font-semibold">Play your variant</h2>
+            <h2 className="text-xl font-semibold">Play your variant privately</h2>
             <p>
               From the{" "}
               <a
@@ -70,37 +70,17 @@ export function UploadDiplicityPage() {
               >
                 diplicity.com/variants
               </a>{" "}
-              page you can now create a private game — you&apos;ll be playing
-              all sides yourself. When you&apos;re ready to bring others in,
-              use the <strong>Share &amp; Invite</strong> link inside the game
-              to invite players directly.
+              page you can now start a &ldquo;Create game&rdquo; flow with your
+              variant selected. This will be set to private. You can choose to
+              be one of the players and invite others, or be a Game Master and
+              not play but observe the game (note: GM is still MVP — you can
+              kick staging players and pause the game, but not chat with other
+              players yet).
             </p>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <h2 className="text-xl font-semibold">Getting your variant published</h2>
             <p>
-              If your variant is working well and you&apos;d like it to become
-              part of the official Diplicity roster — playable by everyone — you
-              can apply to have it published. Reach out to the Diplicity team
-              on{" "}
-              <a
-                href="https://discord.gg/TPxS67fw9T"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-4"
-              >
-                Discord
-              </a>{" "}
-              and we&apos;ll be happy to take a look.
-            </p>
-            <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
-              To keep the quality of the variant roster high, the Diplicity
-              team reviews every submission and reserves the right to decline a
-              proposal for any reason. That said, we genuinely want to see great
-              variants published — if something needs tweaking, we&apos;ll work
-              with you to get it there. No guarantees, but we&apos;re rooting
-              for you.
+              Whether you play as GM or player, use the{" "}
+              <strong>Share &amp; Invite</strong> link inside the staging game
+              to invite players directly.
             </p>
           </section>
 
@@ -126,6 +106,46 @@ export function UploadDiplicityPage() {
               <strong>Heads-up:</strong>{" "}Uploading a new version will destroy
               any Sandbox games you&apos;ve started with the previous version.
               Make sure you&apos;ve finished testing before you overwrite.
+            </p>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xl font-semibold">Getting your variant published</h2>
+            <p>
+              If your variant is working well and you&apos;d like it to become
+              part of the public Diplicity roster — playable by everyone — you
+              can apply to have it published as a community variant. Note that
+              you first need to have completed four playtests of your map, to
+              ensure there is time to find bugs. When you have four completed
+              games on Diplicity, you can use this{" "}
+              <a
+                href="https://forms.gle/fFAMcaybtivnFsjc9"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-4"
+              >
+                Google Form
+              </a>
+              . This will send us a message and we will publish it for you.
+            </p>
+            <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
+              To keep the quality of the variant roster high, the Diplicity
+              team reviews every submission and reserves the right to decline a
+              proposal for any reason. That said, we genuinely want to see great
+              variants published — if something needs tweaking, we&apos;ll work
+              with you to get it there. No guarantees, but we&apos;re rooting
+              for you.
+            </p>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xl font-semibold">Becoming official</h2>
+            <p>
+              Players are by default guided to &ldquo;official&rdquo; variants.
+              These are proven popular, well optimized, and offer good (first)
+              player experiences. If your variant becomes popular, we can add it
+              to the &ldquo;official&rdquo; roster — but we do this on an
+              invite-only basis.
             </p>
           </section>
         </div>
