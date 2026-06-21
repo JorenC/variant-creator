@@ -287,9 +287,6 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
               : "Please fill in all fields for each extra unit."}
           </div>
         )}
-        <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
-          Supply centers and units assigned to Neutral are controlled by the game, not a player. Their units hold automatically each turn and are never built or disbanded.
-        </p>
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
