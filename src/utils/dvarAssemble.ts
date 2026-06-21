@@ -20,6 +20,15 @@ export const DEFAULT_VICTORY_CONDITIONS: VictoryConditionsData = [
   { type: "supply-center-majority", supplyCenters: 18 },
 ];
 
+/**
+ * The auto-generated power that owns every supply center and unit the user
+ * assigned to "Neutral". It is never shown or edited as a normal nation (the
+ * Nations form reserves the `neutral` id); it is synthesized here only when at
+ * least one neutral SC or unit exists, and marked `non_playable` so the engine
+ * holds its units automatically and never builds or disbands for it.
+ */
+export const NEUTRAL_NATION = { id: "neutral", name: "Neutral", color: "#9E9E9E" } as const;
+
 export const DEFAULT_PHASE_ENTRIES: PhaseProgressionData = [
   { season: "Spring", type: "Movement",   yearDelta: 0 },
   { season: "Spring", type: "Retreat",    yearDelta: 0 },
@@ -180,6 +189,7 @@ export function assembleDvar({
   phaseProgressionData,
   victoryConditionsData,
   adjudicationModifiersData,
+  neutralName,
 }: AssembleDvarInput): Record<string, unknown> {
   const provinces = provincesData.provinces.map(p => {
     const entry = homeNationsData[p.id];
@@ -209,7 +219,7 @@ export function assembleDvar({
   );
 
   const homeUnits = Object.entries(homeNationsData)
-    .filter(([, v]) => v.startingUnit !== null && v.nation && v.nation !== "" && v.nation !== "neutral")
+    .filter(([, v]) => v.startingUnit !== null && v.nation && v.nation !== "")
     .map(([provinceId, v]) => ({
       nation: v.nation,
       type: v.startingUnit === "army" ? "Army" : "Fleet",
@@ -217,7 +227,7 @@ export function assembleDvar({
     }));
 
   const extraUnitsList = (extraUnits ?? [])
-    .filter(eu => eu.province && eu.nation && eu.unit && eu.nation !== "neutral")
+    .filter(eu => eu.province && eu.nation && eu.unit)
     .map(eu => ({
       nation: eu.nation,
       type: eu.unit === "army" ? "Army" : "Fleet",
@@ -227,7 +237,7 @@ export function assembleDvar({
   const units = [...homeUnits, ...extraUnitsList];
 
   const supplyCenters = Object.entries(homeNationsData)
-    .filter(([, v]) => v.nation && v.nation !== "" && v.nation !== "neutral")
+    .filter(([, v]) => v.nation && v.nation !== "")
     .map(([provinceId, v]) => ({ nation: v.nation, province: provinceId }));
 
   const seasons = [...new Set(phaseProgressionData.map(e => e.season))];
@@ -243,15 +253,28 @@ export function assembleDvar({
     .filter(([, e]) => e.enabled && e.provinceOccupier && e.provinceOccupier !== "empty")
     .map(([provinceId, e]) => ({
       province: provinceId,
-      // "neutral" is the form's internal sentinel; the file format spells it
-      // "Neutral" (matching dependency entries and existing variants).
-      nation: e.provinceOccupier === "neutral" ? "Neutral" : e.provinceOccupier,
+      // "neutral" is the form's internal sentinel for the non-playable neutral
+      // power; emit its nation id so the server resolves it to that power (and
+      // colours the province accordingly). "empty" stays the unowned marker.
+      nation: e.provinceOccupier === "neutral" ? NEUTRAL_NATION.id : e.provinceOccupier,
       dependencies: Object.entries(e.conditions)
         .map(([depProvince, nation]) => ({
           province: depProvince,
-          nation: nation === "neutral" ? "Neutral" : nation === "empty" ? "Empty" : nation,
+          nation: nation === "neutral" ? NEUTRAL_NATION.id : nation === "empty" ? "Empty" : nation,
         })),
     }));
+
+  const nationsOut: Array<{ id: string; name: string; color: string; non_playable?: boolean }> =
+    nations.map(n => ({ id: n.id, name: n.name, color: n.color }));
+  const usesNeutral =
+    units.some(u => u.nation === NEUTRAL_NATION.id) ||
+    supplyCenters.some(sc => sc.nation === NEUTRAL_NATION.id) ||
+    dominanceRules.some(
+      r => r.nation === NEUTRAL_NATION.id || r.dependencies.some(d => d.nation === NEUTRAL_NATION.id)
+    );
+  if (usesNeutral) {
+    nationsOut.push({ ...NEUTRAL_NATION, name: neutralName?.trim() || NEUTRAL_NATION.name, non_playable: true });
+  }
 
   const output: Record<string, unknown> = {
     schemaVersion: 1,
@@ -261,7 +284,7 @@ export function assembleDvar({
     author: basicInfo.author,
     victoryConditions: victoryConditionsData,
     phaseProgression: { seasons, transitions },
-    nations: nations.map(n => ({ id: n.id, name: n.name, color: n.color })),
+    nations: nationsOut,
     provinces,
     namedCoasts,
     initialState: {

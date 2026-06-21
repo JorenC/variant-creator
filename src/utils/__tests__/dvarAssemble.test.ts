@@ -308,13 +308,13 @@ describe("assembleDvar", () => {
       expect(locations).toContain("bur"); // extra unit
     });
 
-    it("excludes extra units whose nation is neutral", () => {
+    it("includes extra units whose nation is neutral, owned by the neutral power", () => {
       const input = baseInput();
       input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
       input.extraUnits = [{ id: "1", province: "bur", nation: "neutral", unit: "army", coast: null }];
       const out = assembleDvar(input) as Record<string, unknown>;
-      const { units } = out.initialState as { units: Array<{ location: string }> };
-      expect(units.map(u => u.location)).not.toContain("bur");
+      const { units } = out.initialState as { units: Array<{ location: string; nation: string }> };
+      expect(units).toContainEqual({ nation: "neutral", type: "Army", location: "bur" });
     });
 
     it("excludes extra units with a blank province or no unit type", () => {
@@ -344,7 +344,7 @@ describe("assembleDvar", () => {
     });
   });
 
-  it("excludes neutral / empty owners from units and supply centers", () => {
+  it("excludes empty owners but keeps neutral owners in units and supply centers", () => {
     const input = baseInput();
     input.homeNationsData = {
       par: { nation: "neutral", startingUnit: "army", startingCoast: null },
@@ -352,20 +352,109 @@ describe("assembleDvar", () => {
     };
     const out = assembleDvar(input) as Record<string, unknown>;
     const initialState = out.initialState as Record<string, unknown>;
-    expect(initialState.units).toEqual([]);
-    expect(initialState.supplyCenters).toEqual([]);
+    expect(initialState.units).toEqual([{ nation: "neutral", type: "Army", location: "par" }]);
+    expect(initialState.supplyCenters).toEqual([{ nation: "neutral", province: "par" }]);
   });
 });
 
-describe("assembleDvar – dominance occupier casing", () => {
-  it('exports the internal "neutral" sentinel as "Neutral"', () => {
+describe("assembleDvar – neutral (non_playable) nation", () => {
+  const neutralNation = (out: Record<string, unknown>) =>
+    (out.nations as Array<{ id: string; name: string; color: string; non_playable?: boolean }>)
+      .find(n => n.id === "neutral");
+
+  it("appends a grey non_playable neutral nation when a neutral SC has a unit", () => {
+    const input = baseInput();
+    input.homeNationsData = {
+      par: { nation: "neutral", startingUnit: "army", startingCoast: null },
+    };
+    const out = assembleDvar(input) as Record<string, unknown>;
+    expect(neutralNation(out)).toEqual({ id: "neutral", name: "Neutral", color: "#9E9E9E", non_playable: true });
+  });
+
+  it("appends the neutral nation for a neutral SC with no unit", () => {
+    const input = baseInput();
+    input.homeNationsData = {
+      par: { nation: "neutral", startingUnit: null, startingCoast: null },
+    };
+    const out = assembleDvar(input) as Record<string, unknown>;
+    expect(neutralNation(out)).toBeDefined();
+    const initialState = out.initialState as Record<string, unknown>;
+    expect(initialState.units).toEqual([]);
+    expect(initialState.supplyCenters).toEqual([{ nation: "neutral", province: "par" }]);
+  });
+
+  it("appends the neutral nation for a neutral unit with no SC", () => {
+    const input = baseInput();
+    input.homeNationsData = { par: { nation: "fra", startingUnit: "army", startingCoast: null } };
+    input.provincesData.provinces.push({ id: "bur", name: "Burgundy", type: "land", supplyCenter: false, namedCoasts: [] });
+    input.extraUnits = [{ id: "1", province: "bur", nation: "neutral", unit: "army", coast: null }];
+    const out = assembleDvar(input) as Record<string, unknown>;
+    expect(neutralNation(out)).toBeDefined();
+  });
+
+  it("does not append the neutral nation when nothing is assigned to neutral", () => {
+    const out = assembleDvar(baseInput()) as Record<string, unknown>;
+    expect(neutralNation(out)).toBeUndefined();
+  });
+
+  it("output with a neutral nation passes DvarSchema", () => {
+    const input = baseInput();
+    input.nations = [{ id: "fra", name: "France", color: "#ffffff" }];
+    input.homeNationsData = {
+      par: { nation: "neutral", startingUnit: "army", startingCoast: null },
+    };
+    const result = DvarSchema.safeParse(assembleDvar(input));
+    if (!result.success) {
+      throw new Error(
+        "assembleDvar output with a neutral nation failed schema validation:\n" +
+        result.error.issues.map(i => `  ${i.path.join(".")}: ${i.message}`).join("\n")
+      );
+    }
+    expect(result.data.nations.find(n => n.id === "neutral")?.non_playable).toBe(true);
+  });
+});
+
+describe("assembleDvar – dominance neutral references the neutral power", () => {
+  it('exports the "neutral" sentinel as the neutral nation id, and "empty" as "Empty"', () => {
     const input = baseInput();
     input.dominanceRulesData = {
-      bur: { enabled: true, provinceOccupier: "neutral", conditions: { par: "neutral" } },
+      bur: { enabled: true, provinceOccupier: "neutral", conditions: { par: "neutral", bre: "empty" } },
     };
-    const out = assembleDvar(input) as { dominanceRules?: Array<{ nation: string; dependencies: Array<{ nation: string }> }> };
-    expect(out.dominanceRules![0].nation).toBe("Neutral");
-    expect(out.dominanceRules![0].dependencies[0].nation).toBe("Neutral");
+    const out = assembleDvar(input) as { dominanceRules?: Array<{ nation: string; dependencies: Array<{ province: string; nation: string }> }> };
+    expect(out.dominanceRules![0].nation).toBe("neutral");
+    const deps = Object.fromEntries(out.dominanceRules![0].dependencies.map(d => [d.province, d.nation]));
+    expect(deps.par).toBe("neutral");
+    expect(deps.bre).toBe("Empty");
+  });
+
+  it("synthesizes the neutral nation when only a dominance rule references it", () => {
+    const input = baseInput();
+    input.dominanceRulesData = {
+      bur: { enabled: true, provinceOccupier: "neutral", conditions: {} },
+    };
+    const out = assembleDvar(input) as Record<string, unknown>;
+    const neutral = (out.nations as Array<{ id: string; non_playable?: boolean }>).find(n => n.id === "neutral");
+    expect(neutral?.non_playable).toBe(true);
+  });
+});
+
+describe("assembleDvar – neutral name", () => {
+  it("uses the provided neutralName for the synthesized power", () => {
+    const input = baseInput();
+    input.homeNationsData = { par: { nation: "neutral", startingUnit: "army", startingCoast: null } };
+    input.neutralName = "Bandits";
+    const out = assembleDvar(input) as Record<string, unknown>;
+    const neutral = (out.nations as Array<{ id: string; name: string }>).find(n => n.id === "neutral");
+    expect(neutral?.name).toBe("Bandits");
+  });
+
+  it("falls back to \"Neutral\" when neutralName is blank", () => {
+    const input = baseInput();
+    input.homeNationsData = { par: { nation: "neutral", startingUnit: "army", startingCoast: null } };
+    input.neutralName = "   ";
+    const out = assembleDvar(input) as Record<string, unknown>;
+    const neutral = (out.nations as Array<{ id: string; name: string }>).find(n => n.id === "neutral");
+    expect(neutral?.name).toBe("Neutral");
   });
 });
 

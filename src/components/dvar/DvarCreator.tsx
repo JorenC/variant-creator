@@ -25,6 +25,7 @@ import {
   reconcileHomeNationsWithProvinces,
   DEFAULT_PHASE_ENTRIES,
   DEFAULT_VICTORY_CONDITIONS,
+  NEUTRAL_NATION,
 } from "@/utils/dvarAssemble";
 import type { ParsedDsvg } from "@/utils/parseDsvg";
 import type { DvarAdjacencyMap, PassType } from "@/utils/dvarAdjacency";
@@ -87,6 +88,7 @@ export function DvarCreator() {
   const [phaseProgressionData, setPhaseProgressionData] = useState<PhaseProgressionData | null>(null);
   const [victoryConditionsData, setVictoryConditionsData] = useState<VictoryConditionsData | null>(null);
   const [adjudicationModifiersData, setAdjudicationModifiersData] = useState<string[] | null>(null);
+  const [neutralName, setNeutralName] = useState<string>(NEUTRAL_NATION.name);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dvarInputRef = useRef<HTMLInputElement>(null);
@@ -153,9 +155,18 @@ export function DvarCreator() {
       rules: dvar.rules ?? "",
     });
 
-    // nations
-    const nationsRaw = dvar.nations ?? [];
-    setNations(nationsRaw);
+    // nations — non-playable powers (e.g. the auto-generated neutral) are not
+    // user-editable nations; strip them here and fold their ownership back into
+    // the "neutral" sentinel below so the wizard round-trips them transparently.
+    const nonPlayableIds = new Set((dvar.nations ?? []).filter(n => n.non_playable).map(n => n.id));
+    const ownerOf = (nation: string) => (nonPlayableIds.has(nation) ? "neutral" : nation);
+    setNations(
+      (dvar.nations ?? [])
+        .filter(n => !n.non_playable)
+        .map(n => ({ id: n.id, name: n.name, color: n.color }))
+    );
+    const importedNeutral = (dvar.nations ?? []).find(n => n.non_playable);
+    setNeutralName(importedNeutral?.name ?? NEUTRAL_NATION.name);
 
     // provinces + namedCoasts
     const namedCoastsRaw = dvar.namedCoasts ?? [];
@@ -185,7 +196,7 @@ export function DvarCreator() {
     setAdjacenciesData(adjacencyMap);
 
     // home nations + extra units
-    const scNationMap = Object.fromEntries((dvar.initialState?.supplyCenters ?? []).map(sc => [sc.province, sc.nation]));
+    const scNationMap = Object.fromEntries((dvar.initialState?.supplyCenters ?? []).map(sc => [sc.province, ownerOf(sc.nation)]));
     const homeNations: HomeNationsData = {};
     for (const p of provinces) {
       if (!p.supplyCenter) continue;
@@ -194,8 +205,9 @@ export function DvarCreator() {
     const extraUnits: ExtraUnit[] = [];
     for (const unit of dvar.initialState?.units ?? []) {
       const provinceId = unit.location.includes("/") ? unit.location.split("/")[0] : unit.location;
+      const unitNation = ownerOf(unit.nation);
       const homeNation = scNationMap[provinceId];
-      if (homeNation && homeNation === unit.nation && homeNations[provinceId]) {
+      if (homeNation && homeNation === unitNation && homeNations[provinceId]) {
         homeNations[provinceId] = {
           ...homeNations[provinceId],
           startingUnit: unit.type === "Army" ? "army" : "fleet",
@@ -205,7 +217,7 @@ export function DvarCreator() {
         extraUnits.push({
           id: crypto.randomUUID(),
           province: provinceId,
-          nation: unit.nation,
+          nation: unitNation,
           unit: unit.type === "Army" ? "army" : "fleet",
           coast: unit.location.includes("/") ? unit.location : null,
         });
@@ -214,17 +226,22 @@ export function DvarCreator() {
     setHomeNationsData(homeNations);
     setExtraUnitsData(extraUnits.length > 0 ? extraUnits : null);
 
-    // dominance rules: start from the auto-detected structure, then overlay enabled rules
+    // dominance rules: start from the auto-detected structure, then overlay enabled rules.
+    // Map file owners back to the form's sentinels: the neutral power (capital
+    // "Neutral" sentinel or any non-playable nation id) becomes "neutral", and
+    // the unowned marker "Empty" becomes "empty".
+    const domOwner = (n: string) =>
+      n === "Empty" ? "empty" : n === "Neutral" || nonPlayableIds.has(n) ? "neutral" : n;
     const baseDR = buildInitialDominanceRules(adjacencyMap, provinces);
     for (const rule of dvar.dominanceRules ?? []) {
       if (!baseDR[rule.province]) {
-        baseDR[rule.province] = { enabled: true, provinceOccupier: rule.nation, conditions: {} };
+        baseDR[rule.province] = { enabled: true, provinceOccupier: domOwner(rule.nation), conditions: {} };
       } else {
         baseDR[rule.province].enabled = true;
-        baseDR[rule.province].provinceOccupier = rule.nation === "Neutral" ? "neutral" : rule.nation;
+        baseDR[rule.province].provinceOccupier = domOwner(rule.nation);
       }
       for (const dep of rule.dependencies) {
-        baseDR[rule.province].conditions[dep.province] = dep.nation === "Neutral" ? "neutral" : dep.nation === "Empty" ? "empty" : dep.nation;
+        baseDR[rule.province].conditions[dep.province] = domOwner(dep.nation);
       }
     }
     setDominanceRulesData(baseDR);
@@ -992,6 +1009,7 @@ export function DvarCreator() {
                 phaseProgressionData={phaseProgressionData}
                 victoryConditionsData={victoryConditionsData}
                 adjudicationModifiersData={adjudicationModifiersData ?? []}
+                neutralName={neutralName}
               />
             )}
 

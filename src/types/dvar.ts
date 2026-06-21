@@ -95,7 +95,7 @@ export interface ProvincesFormValues {
 // ─── Imported `.dvar` file shape ────────────────────────────────────────────────
 
 export interface DvarJsonAdjacency { to: string; pass: string; }
-export interface DvarJsonNation { id: string; name: string; color: string; }
+export interface DvarJsonNation { id: string; name: string; color: string; non_playable?: boolean; }
 export interface DvarJsonNamedCoast { id: string; name: string; parentProvince: string; adjacencies: DvarJsonAdjacency[]; }
 export interface DvarJsonProvince { id: string; name: string; type: string; supplyCenter: boolean; adjacencies: DvarJsonAdjacency[]; homeNation?: string; }
 export interface DvarJsonUnit { nation: string; type: string; location: string; }
@@ -155,4 +155,6 @@ export interface AssembleDvarInput {
   phaseProgressionData: PhaseProgressionData;
   victoryConditionsData: VictoryConditionsData;
   adjudicationModifiersData: string[];
+  /** Display name for the auto-generated non-playable neutral power. Defaults to "Neutral". */
+  neutralName?: string;
 }

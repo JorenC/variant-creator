@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, ChevronRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { assembleDvar } from "@/utils/dvarAssemble";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { assembleDvar, NEUTRAL_NATION } from "@/utils/dvarAssemble";
 import { DvarSchema } from "@/utils/dvarSchema";
 import { validateDvarSemantics } from "@/utils/dvarValidate";
 import type { AssembleDvarInput, ExtraUnit, VictoryCondition } from "@/types/dvar";
@@ -19,6 +21,14 @@ export function ExportStep(props: ExportStepProps) {
   const navigate = useNavigate();
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [hasDownloaded, setHasDownloaded] = useState(false);
+  const [neutralName, setNeutralName] = useState(props.neutralName?.trim() || NEUTRAL_NATION.name);
+
+  const hasNeutral =
+    Object.values(homeNationsData).some(v => v.nation === "neutral") ||
+    (extraUnits ?? []).some((eu: ExtraUnit) => eu.nation === "neutral") ||
+    Object.values(dominanceRulesData).some(
+      e => e.enabled && (e.provinceOccupier === "neutral" || Object.values(e.conditions).includes("neutral"))
+    );
 
   const handleContinue = () => {
     if (
@@ -35,15 +45,15 @@ export function ExportStep(props: ExportStepProps) {
 
   const scCount = provincesData.provinces.filter(p => p.supplyCenter).length;
   const namedCoastCount = provincesData.provinces.reduce((n, p) => n + p.namedCoasts.length, 0);
-  const homeUnitCount = Object.values(homeNationsData).filter(v => v.startingUnit !== null && v.nation && v.nation !== "" && v.nation !== "neutral").length;
-  const extraUnitCount = (extraUnits ?? []).filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit && eu.nation !== "neutral").length;
+  const homeUnitCount = Object.values(homeNationsData).filter(v => v.startingUnit !== null && v.nation && v.nation !== "").length;
+  const extraUnitCount = (extraUnits ?? []).filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit).length;
   const unitCount = homeUnitCount + extraUnitCount;
   const activeDominanceRules = Object.values(dominanceRulesData).filter(e => e.enabled).length;
-  const nationMap = Object.fromEntries(nations.map(n => [n.id, n]));
+  const nationMap = Object.fromEntries([...nations, NEUTRAL_NATION].map(n => [n.id, n]));
 
   const handleDownload = () => {
     setSchemaError(null);
-    const output = assembleDvar(props);
+    const output = assembleDvar({ ...props, neutralName });
     const result = DvarSchema.safeParse(output);
     if (!result.success) {
       const messages = result.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("\n");
@@ -100,6 +110,25 @@ export function ExportStep(props: ExportStepProps) {
           </div>
         </div>
 
+        {hasNeutral && (
+          <div className="rounded-lg border p-4 space-y-2 sm:col-span-2">
+            <Label htmlFor="neutral-name" className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: NEUTRAL_NATION.color }} />
+              Neutral power name
+            </Label>
+            <Input
+              id="neutral-name"
+              value={neutralName}
+              onChange={e => setNeutralName(e.target.value)}
+              placeholder={NEUTRAL_NATION.name}
+              className="max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Supply centers and units assigned to Neutral belong to this auto-generated, non-playable power.
+            </p>
+          </div>
+        )}
+
         <div className="rounded-lg border p-4 space-y-1">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Map</p>
           <p className="text-sm">{provincesData.provinces.length} provinces · {scCount} supply centers</p>
@@ -139,7 +168,7 @@ export function ExportStep(props: ExportStepProps) {
           ) : (
             <div className="flex flex-wrap gap-1.5 pt-0.5">
               {Object.entries(homeNationsData)
-                .filter(([, v]) => v.startingUnit !== null && v.nation && v.nation !== "" && v.nation !== "neutral")
+                .filter(([, v]) => v.startingUnit !== null && v.nation && v.nation !== "")
                 .map(([provinceId, v]) => {
                   const nation = nationMap[v.nation];
                   const location = v.startingUnit === "fleet" && v.startingCoast ? v.startingCoast : provinceId;
@@ -151,7 +180,7 @@ export function ExportStep(props: ExportStepProps) {
                   );
                 })}
               {(extraUnits ?? [])
-                .filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit && eu.nation !== "neutral")
+                .filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit)
                 .map((eu: ExtraUnit) => {
                   const nation = nationMap[eu.nation];
                   const location = eu.unit === "fleet" && eu.coast ? eu.coast : eu.province;
