@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Layers, FileCode2, FileJson, Upload, Pencil, Wand2 } from "lucide-react";
+import { ArrowRight, Layers, FileCode2, FileJson, Upload, Pencil, Wand2, Check } from "lucide-react";
 import { AppHeader } from "@/components/common/AppHeader";
 
 interface MapTile {
@@ -178,6 +178,23 @@ export function HomePage() {
               Each step can be done manually if you want creative freedom, but
               it's easier and more foolproof to do it with this creator.
             </p>
+
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-5 py-4">
+              <p className="text-sm font-semibold text-foreground">Supported mechanics</p>
+              <ul className="mt-3 space-y-1.5 text-sm text-foreground">
+                {[
+                  "Build anywhere",
+                  "High seas",
+                  "Neutral units",
+                  "Multiple win conditions (e.g. SC or latest turn)",
+                ].map(mechanic => (
+                  <li key={mechanic} className="flex items-center gap-2">
+                    <Check className="h-4 w-4 shrink-0 text-primary" />
+                    {mechanic}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           <GuideSection id="prepare-map" number="1" icon={<Pencil className="h-4 w-4" />} title="Prepare a PNG map">
