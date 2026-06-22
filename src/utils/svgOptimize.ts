@@ -12,6 +12,10 @@ import { optimize } from "svgo/browser";
 //   child, turning <g id="borders"><path/></g> into <path id="borders"/>
 // - moveElemsAttrsToGroup: hoists per-element fill to the group, undoing
 //   propagateRootFill (dsvgParser extracts elements out of their groups)
+// - removeUselessStrokeAndFill: strips explicit fill="none" that propagateRootFill
+//   stamped onto elements, treating them as redundant because the SVG root also has
+//   fill="none". Those fills are intentional — without them, elements inherit
+//   fill="black" from the React <svg> wrapper that doesn't carry the root fill.
 export function optimizeDsvg(svgString: string): string {
   return optimize(svgString, {
     multipass: true,
@@ -26,6 +30,7 @@ export function optimizeDsvg(svgString: string): string {
             convertShapeToPath: false,
             collapseGroups: false,
             moveElemsAttrsToGroup: false,
+            removeUselessStrokeAndFill: false,
           },
         },
       },
