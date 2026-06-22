@@ -16,6 +16,9 @@ import { optimize } from "svgo/browser";
 //   stamped onto elements, treating them as redundant because the SVG root also has
 //   fill="none". Those fills are intentional — without them, elements inherit
 //   fill="black" from the React <svg> wrapper that doesn't carry the root fill.
+// - removeUnknownsAndDefaults: also strips fill="none" from children when the SVG
+//   root has fill="none", treating the explicit attribute as redundant (same issue
+//   as removeUselessStrokeAndFill — both must be disabled to preserve propagated fills).
 export function optimizeDsvg(svgString: string): string {
   return optimize(svgString, {
     multipass: true,
@@ -31,6 +34,7 @@ export function optimizeDsvg(svgString: string): string {
             collapseGroups: false,
             moveElemsAttrsToGroup: false,
             removeUselessStrokeAndFill: false,
+            removeUnknownsAndDefaults: false,
           },
         },
       },
