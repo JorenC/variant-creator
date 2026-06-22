@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { NEUTRAL_NATION } from "@/utils/dvarAssemble";
 import { buildHomeNationPreviewSvg, extractDsvgProvinceShapes } from "@/utils/dvarPreview";
 import { aspectRatioFromViewBox } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
@@ -214,7 +215,9 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
       for (const n of nations) nationColorMap[n.id] = n.color;
       const colors: Record<string, string> = {};
       for (const [id, entry] of Object.entries(assignment)) {
-        if (entry.nation && entry.nation !== "neutral") {
+        if (entry.nation === "neutral") {
+          colors[id] = NEUTRAL_NATION.color;
+        } else if (entry.nation) {
           const color = nationColorMap[entry.nation];
           if (color) colors[id] = color;
         }
@@ -284,9 +287,6 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
               : "Please fill in all fields for each extra unit."}
           </div>
         )}
-        <p className="text-sm text-muted-foreground rounded-md border px-4 py-3">
-          Neutral units are not supported: units assigned to Neutral are left out of the exported variant entirely.
-        </p>
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <div className="max-h-[70vh] space-y-1 overflow-y-auto pr-2">
@@ -352,7 +352,15 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                           </SelectItem>
                         ))}
                         <SelectSeparator />
-                        <SelectItem value="neutral">Neutral</SelectItem>
+                        <SelectItem value="neutral">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className="inline-block h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: NEUTRAL_NATION.color }}
+                            />
+                            Neutral
+                          </span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -546,7 +554,15 @@ export const HomeNationsForm = forwardRef<HomeNationsFormHandle, HomeNationsForm
                           </SelectItem>
                         ))}
                         <SelectSeparator />
-                        <SelectItem value="neutral">Neutral</SelectItem>
+                        <SelectItem value="neutral">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className="inline-block h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: NEUTRAL_NATION.color }}
+                            />
+                            Neutral
+                          </span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
 

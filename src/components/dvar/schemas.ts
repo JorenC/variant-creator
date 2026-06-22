@@ -49,7 +49,7 @@ export const nationsSchema = z.object({
     )
     .refine(
       nations => nations.every(n => n.id !== "neutral"),
-      { message: '"Neutral" is reserved for unowned supply centers and cannot be used as a nation name' }
+      { message: '"Neutral" is reserved for the auto-generated neutral power and cannot be used as a nation name' }
     ),
 });
 

@@ -63,6 +63,7 @@ export function sanitizeDvarImport(raw: unknown): SanitizedDvarImport | null {
         id: entry.id,
         name: str(entry.name) ?? entry.id,
         color: str(entry.color) ?? "#888888",
+        ...(bool(entry.non_playable) ? { non_playable: true } : {}),
       });
     } else {
       dropped.push("nations: malformed nation entry dropped");

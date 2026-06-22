@@ -33,6 +33,7 @@ const Nation = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   name: z.string(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  non_playable: z.boolean().optional(),
 });
 
 const PhaseTransition = z.object({
