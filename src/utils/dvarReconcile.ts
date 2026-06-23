@@ -5,6 +5,7 @@
  */
 
 import type { ParsedDsvg } from "@/utils/parseDsvg";
+import { BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER } from "@/utils/dvarAssemble";
 import type {
   DvarJson,
   DvarJsonAdjacency,
@@ -17,7 +18,7 @@ import type {
   ReconcileMismatches,
 } from "@/types/dvar";
 
-const KNOWN_MODIFIERS = new Set(["allow-builds-in-non-home-centers"]);
+const KNOWN_MODIFIERS = new Set([BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER]);
 
 /**
  * Checks a dvar for data that will be silently dropped during pre-fill and returns a
