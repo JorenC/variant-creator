@@ -29,6 +29,17 @@ export const DEFAULT_VICTORY_CONDITIONS: VictoryConditionsData = [
  */
 export const NEUTRAL_NATION = { id: "neutral", name: "Neutral", color: "#9E9E9E" } as const;
 
+/**
+ * Adjudication modifier id understood by the Diplicity server (see
+ * `service/adjudicator/types.py`). When present in a variant's
+ * `adjudicationModifiers`, each non-playable nation auto-rebuilds a unit on any
+ * of its owned supply centers left empty after an adjustment phase.
+ */
+export const NEUTRAL_REBUILD_MODIFIER = "neutral-nations-auto-build";
+
+/** Adjudication modifier id permitting builds in any owned (not only home) supply center. */
+export const BUILD_ANYWHERE_MODIFIER = "allow-builds-in-non-home-centers";
+
 export const DEFAULT_PHASE_ENTRIES: PhaseProgressionData = [
   { season: "Spring", type: "Movement",   yearDelta: 0 },
   { season: "Spring", type: "Retreat",    yearDelta: 0 },

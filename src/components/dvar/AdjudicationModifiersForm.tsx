@@ -1,5 +1,6 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { BUILD_ANYWHERE_MODIFIER } from "@/utils/dvarAssemble";
 
 export interface AdjudicationModifiersFormHandle {
   submit: () => void;
@@ -14,20 +15,21 @@ interface AdjudicationModifiersFormProps {
 export const AdjudicationModifiersForm = forwardRef<AdjudicationModifiersFormHandle, AdjudicationModifiersFormProps>(
   ({ defaultValues, onSubmit }, ref) => {
     const [buildAnywhere, setBuildAnywhere] = useState(
-      defaultValues.includes("allow-builds-in-non-home-centers")
+      defaultValues.includes(BUILD_ANYWHERE_MODIFIER)
     );
 
+    // Preserve modifiers this form doesn't manage (e.g. the neutral-rebuild
+    // toggle, which lives on the export step) so navigating through this step
+    // never silently drops them.
+    const buildModifiers = (): string[] => {
+      const modifiers = defaultValues.filter(m => m !== BUILD_ANYWHERE_MODIFIER);
+      if (buildAnywhere) modifiers.push(BUILD_ANYWHERE_MODIFIER);
+      return modifiers;
+    };
+
     useImperativeHandle(ref, () => ({
-      submit: () => {
-        const modifiers: string[] = [];
-        if (buildAnywhere) modifiers.push("allow-builds-in-non-home-centers");
-        onSubmit(modifiers);
-      },
-      getValues: () => {
-        const modifiers: string[] = [];
-        if (buildAnywhere) modifiers.push("allow-builds-in-non-home-centers");
-        return modifiers;
-      },
+      submit: () => onSubmit(buildModifiers()),
+      getValues: buildModifiers,
     }));
 
     return (
