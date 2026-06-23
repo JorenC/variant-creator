@@ -4,7 +4,8 @@ import { Download, ChevronRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { assembleDvar, NEUTRAL_NATION } from "@/utils/dvarAssemble";
+import { Checkbox } from "@/components/ui/checkbox";
+import { assembleDvar, NEUTRAL_NATION, NEUTRAL_REBUILD_MODIFIER } from "@/utils/dvarAssemble";
 import { DvarSchema } from "@/utils/dvarSchema";
 import { validateDvarSemantics } from "@/utils/dvarValidate";
 import type { AssembleDvarInput, ExtraUnit, VictoryCondition } from "@/types/dvar";
@@ -17,11 +18,14 @@ interface ExportStepProps extends AssembleDvarInput {
 }
 
 export function ExportStep(props: ExportStepProps) {
-  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData, onDownloaded, onLeaveApproved } = props;
+  const { basicInfo, nations, provincesData, homeNationsData, extraUnits, phaseProgressionData, victoryConditionsData, dominanceRulesData, adjudicationModifiersData, onDownloaded, onLeaveApproved } = props;
   const navigate = useNavigate();
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [hasDownloaded, setHasDownloaded] = useState(false);
   const [neutralName, setNeutralName] = useState(props.neutralName?.trim() || NEUTRAL_NATION.name);
+  const [neutralsRebuild, setNeutralsRebuild] = useState(
+    adjudicationModifiersData.includes(NEUTRAL_REBUILD_MODIFIER)
+  );
 
   const hasNeutral =
     Object.values(homeNationsData).some(v => v.nation === "neutral") ||
@@ -53,7 +57,12 @@ export function ExportStep(props: ExportStepProps) {
 
   const handleDownload = () => {
     setSchemaError(null);
-    const output = assembleDvar({ ...props, neutralName });
+    // The neutral-rebuild checkbox is the single source of truth for its
+    // modifier id; rebuild the list from the other modifiers and re-add it iff
+    // checked (dedupe-safe regardless of whether it arrived via import).
+    const mergedModifiers = adjudicationModifiersData.filter(m => m !== NEUTRAL_REBUILD_MODIFIER);
+    if (neutralsRebuild) mergedModifiers.push(NEUTRAL_REBUILD_MODIFIER);
+    const output = assembleDvar({ ...props, neutralName, adjudicationModifiersData: mergedModifiers });
     const result = DvarSchema.safeParse(output);
     if (!result.success) {
       const messages = result.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("\n");
@@ -126,6 +135,20 @@ export function ExportStep(props: ExportStepProps) {
             <p className="text-xs text-muted-foreground">
               Supply centers and units assigned to Neutral belong to this auto-generated, non-playable power.
             </p>
+            <label className="flex cursor-pointer items-start gap-3 pt-1">
+              <Checkbox
+                checked={neutralsRebuild}
+                onCheckedChange={checked => setNeutralsRebuild(checked === true)}
+                className="mt-0.5"
+              />
+              <div>
+                <p className="text-sm font-medium">Neutrals rebuild</p>
+                <p className="text-xs text-muted-foreground">
+                  After an adjustment phase, each non-playable neutral power automatically rebuilds a unit
+                  on any of its owned supply centers left empty.
+                </p>
+              </div>
+            </label>
           </div>
         )}
 

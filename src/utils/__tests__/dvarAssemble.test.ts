@@ -6,6 +6,8 @@ import {
   assembleDvar,
   orderTransitionsIntoChain,
   reconcileHomeNationsWithProvinces,
+  NEUTRAL_REBUILD_MODIFIER,
+  BUILD_ANYWHERE_MODIFIER,
 } from "../dvarAssemble";
 import { DvarSchema } from "../dvarSchema";
 import type { AssembleDvarInput } from "@/types/dvar";
@@ -117,6 +119,14 @@ describe("assembleDvar", () => {
     expect(withOptionals.rules).toBe("Be nice");
     expect(withOptionals.adjudicationModifiers).toEqual(["allow-builds-in-non-home-centers"]);
     expect((withOptionals.dominanceRules as unknown[]).length).toBe(1);
+  });
+
+  it("emits the neutral-rebuild modifier when present, alongside other modifiers", () => {
+    const input = baseInput();
+    input.adjudicationModifiersData = [BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER];
+    const out = assembleDvar(input) as Record<string, unknown>;
+    expect(out.adjudicationModifiers).toEqual([BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER]);
+    expect(NEUTRAL_REBUILD_MODIFIER).toBe("neutral-nations-auto-build");
   });
 
   it("output passes DvarSchema — regression guard for canonical schema compliance", () => {
