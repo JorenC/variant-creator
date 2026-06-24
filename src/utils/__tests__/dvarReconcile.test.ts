@@ -217,6 +217,14 @@ describe("collectPreFillWarnings", () => {
     expect(warnings[0]).toMatch(/ScLevelPayoffs/);
   });
 
+  it("does not warn for the neutral-nations-auto-build modifier (round-trips via the export step's Neutrals rebuild toggle)", () => {
+    const dvar: DvarJson = {
+      adjudicationModifiers: ["neutral-nations-auto-build"],
+    };
+
+    expect(collectPreFillWarnings(dvar)).toEqual([]);
+  });
+
   it("warns for each unknown modifier independently", () => {
     const dvar: DvarJson = {
       adjudicationModifiers: ["ScLevelPayoffs", "ChaosDiplomacy", "allow-builds-in-non-home-centers"],
