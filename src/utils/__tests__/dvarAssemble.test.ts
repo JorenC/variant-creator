@@ -8,6 +8,7 @@ import {
   reconcileHomeNationsWithProvinces,
   NEUTRAL_REBUILD_MODIFIER,
   BUILD_ANYWHERE_MODIFIER,
+  ANY_HOME_CENTER_MODIFIER,
 } from "../dvarAssemble";
 import { DvarSchema } from "../dvarSchema";
 import type { AssembleDvarInput } from "@/types/dvar";
@@ -127,6 +128,14 @@ describe("assembleDvar", () => {
     const out = assembleDvar(input) as Record<string, unknown>;
     expect(out.adjudicationModifiers).toEqual([BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER]);
     expect(NEUTRAL_REBUILD_MODIFIER).toBe("neutral-nations-auto-build");
+  });
+
+  it("emits the any-home-center modifier when present", () => {
+    const input = baseInput();
+    input.adjudicationModifiersData = [ANY_HOME_CENTER_MODIFIER];
+    const out = assembleDvar(input) as Record<string, unknown>;
+    expect(out.adjudicationModifiers).toEqual([ANY_HOME_CENTER_MODIFIER]);
+    expect(ANY_HOME_CENTER_MODIFIER).toBe("allow-builds-in-any-home-center");
   });
 
   it("output passes DvarSchema — regression guard for canonical schema compliance", () => {
@@ -379,6 +388,19 @@ describe("assembleDvar – neutral (non_playable) nation", () => {
     };
     const out = assembleDvar(input) as Record<string, unknown>;
     expect(neutralNation(out)).toEqual({ id: "neutral", name: "Neutral", color: "#9E9E9E", non_playable: true });
+  });
+
+  it("sets homeNation to the neutral power on neutral-assigned SCs, but not on unowned SCs", () => {
+    const input = baseInput();
+    input.provincesData.provinces.push({ id: "bre", name: "Brest", type: "coastal", supplyCenter: true, namedCoasts: [] });
+    input.homeNationsData = {
+      par: { nation: "neutral", startingUnit: "army", startingCoast: null },
+      bre: { nation: "", startingUnit: null, startingCoast: null },
+    };
+    const out = assembleDvar(input) as Record<string, unknown>;
+    const provinces = out.provinces as Array<Record<string, unknown>>;
+    expect(provinces.find(p => p.id === "par")?.homeNation).toBe("neutral");
+    expect(provinces.find(p => p.id === "bre")?.homeNation).toBeUndefined();
   });
 
   it("appends the neutral nation for a neutral SC with no unit", () => {

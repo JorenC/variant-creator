@@ -40,6 +40,14 @@ export const NEUTRAL_REBUILD_MODIFIER = "neutral-nations-auto-build";
 /** Adjudication modifier id permitting builds in any owned (not only home) supply center. */
 export const BUILD_ANYWHERE_MODIFIER = "allow-builds-in-non-home-centers";
 
+/**
+ * Adjudication modifier id permitting builds in any owned home supply center of
+ * any nation, including the neutral power ("precores") — but not in supply
+ * centers that started unowned. Relies on neutral home SCs carrying a
+ * `homeNation`, which {@link assembleDvar} emits.
+ */
+export const ANY_HOME_CENTER_MODIFIER = "allow-builds-in-any-home-center";
+
 export const DEFAULT_PHASE_ENTRIES: PhaseProgressionData = [
   { season: "Spring", type: "Movement",   yearDelta: 0 },
   { season: "Spring", type: "Retreat",    yearDelta: 0 },
@@ -211,7 +219,10 @@ export function assembleDvar({
       supplyCenter: p.supplyCenter,
       adjacencies: (adjacenciesData[p.id] ?? []).map(a => ({ to: a.to, pass: a.pass })),
     };
-    if (entry?.nation && entry.nation !== "" && entry.nation !== "neutral") {
+    // "neutral" is both the form's sentinel and the synthesized power's id, so
+    // neutral home SCs get a homeNation too — the any-home-center build rule
+    // needs it to distinguish them from SCs that started unowned.
+    if (entry?.nation && entry.nation !== "") {
       result.homeNation = entry.nation;
     }
     return result;

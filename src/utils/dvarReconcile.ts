@@ -5,7 +5,7 @@
  */
 
 import type { ParsedDsvg } from "@/utils/parseDsvg";
-import { BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER } from "@/utils/dvarAssemble";
+import { ANY_HOME_CENTER_MODIFIER, BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER } from "@/utils/dvarAssemble";
 import type {
   DvarJson,
   DvarJsonAdjacency,
@@ -18,7 +18,7 @@ import type {
   ReconcileMismatches,
 } from "@/types/dvar";
 
-const KNOWN_MODIFIERS = new Set([BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER]);
+const KNOWN_MODIFIERS = new Set([ANY_HOME_CENTER_MODIFIER, BUILD_ANYWHERE_MODIFIER, NEUTRAL_REBUILD_MODIFIER]);
 
 /**
  * Checks a dvar for data that will be silently dropped during pre-fill and returns a
@@ -54,6 +54,15 @@ export function collectPreFillWarnings(dvar: DvarJson): string[] {
     if (!KNOWN_MODIFIERS.has(mod)) {
       warnings.push(`Adjudication modifier "${mod}" is not supported and will be dropped`);
     }
+  }
+
+  // The build-rule modifiers are mutually exclusive radio options; when a
+  // hand-edited dVAR carries both, the form keeps the broader build-anywhere.
+  const modifiers = dvar.adjudicationModifiers ?? [];
+  if (modifiers.includes(BUILD_ANYWHERE_MODIFIER) && modifiers.includes(ANY_HOME_CENTER_MODIFIER)) {
+    warnings.push(
+      `Adjudication modifiers "${BUILD_ANYWHERE_MODIFIER}" and "${ANY_HOME_CENTER_MODIFIER}" are mutually exclusive — "${ANY_HOME_CENTER_MODIFIER}" will be dropped`
+    );
   }
 
   // Conditional phase transitions (yearMod conditions, used by e.g. hundred-style
