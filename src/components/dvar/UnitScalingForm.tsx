@@ -1,7 +1,8 @@
-import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { extractDsvgProvinceShapes, buildProvincePreviewSvg } from "@/utils/dvarPreview";
+import { prepareShape, disposeShape } from "@/utils/geometry";
 import { aspectRatioFromViewBox } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
 import type { DvarAdjacencyMap } from "@/utils/dvarAdjacency";
@@ -116,19 +117,21 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
       return ids;
     }, [previewUnits, previewOrders]);
 
-    const groupRefs = useRef<Map<string, SVGGElement>>(new Map());
-    const [centers, setCenters] = useState<Record<string, { x: number; y: number }>>({});
-
-    useLayoutEffect(() => {
+    const centers = useMemo(() => {
       const next: Record<string, { x: number; y: number }> = {};
-      for (const id of neededIds) {
-        const el = groupRefs.current.get(id);
-        if (!el) continue;
-        const box = el.getBBox();
-        next[id] = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      for (const shape of shapes) {
+        if (!neededIds.has(shape.id)) continue;
+        const prepared = prepareShape(shape.paths);
+        if (prepared.bounds) {
+          next[shape.id] = {
+            x: prepared.bounds.x + prepared.bounds.width / 2,
+            y: prepared.bounds.y + prepared.bounds.height / 2,
+          };
+        }
+        disposeShape(prepared);
       }
-      setCenters(next);
-    }, [neededIds, shapes]);
+      return next;
+    }, [shapes, neededIds]);
 
     return (
       <div className="space-y-6">
@@ -173,12 +176,7 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
             {shapes
               .filter(shape => neededIds.has(shape.id))
               .map(shape => (
-                <g
-                  key={shape.id}
-                  ref={el => {
-                    if (el) groupRefs.current.set(shape.id, el);
-                  }}
-                >
+                <g key={shape.id}>
                   {shape.paths.map((d, i) => (
                     <path key={i} d={d} fill="#fde047" fillOpacity={0.25} stroke="none" />
                   ))}
