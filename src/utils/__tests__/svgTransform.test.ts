@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveTransforms, pathToAbsolute } from "@/utils/svgTransform";
+import { resolveTransforms, pathToAbsolute, scaleSubtree } from "@/utils/svgTransform";
 
 function parseSvg(xml: string): Element {
   const doc = new DOMParser().parseFromString(xml, "image/svg+xml");
@@ -55,6 +55,44 @@ describe("resolveTransforms – path", () => {
     expect(attr(c, "cx")).toBe("60");
     expect(attr(c, "cy")).toBe("120");
     expect(attr(c, "r")).toBe("5");
+  });
+});
+
+// ─── scaleSubtree ──────────────────────────────────────────────────────────────
+
+describe("scaleSubtree", () => {
+  it("is a no-op at scale 1", () => {
+    const root = parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <path id="p" d="M 0 0 L 10 10"/>
+      </svg>
+    `);
+    scaleSubtree(root, 1);
+    expect(attr(root.querySelector("#p")!, "d")).toBe("M 0 0 L 10 10");
+  });
+
+  it("scales path coordinates uniformly", () => {
+    const root = parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <path id="p" d="M 10 20 L 100 50"/>
+      </svg>
+    `);
+    scaleSubtree(root, 0.5);
+    expect(attr(root.querySelector("#p")!, "d")).toBe("M 5 10 L 50 25");
+  });
+
+  it("scales rect geometry (position and size)", () => {
+    const root = parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <rect id="r" x="10" y="20" width="40" height="60"/>
+      </svg>
+    `);
+    scaleSubtree(root, 0.5);
+    const r = root.querySelector("#r")!;
+    expect(attr(r, "x")).toBe("5");
+    expect(attr(r, "y")).toBe("10");
+    expect(attr(r, "width")).toBe("20");
+    expect(attr(r, "height")).toBe("30");
   });
 });
 

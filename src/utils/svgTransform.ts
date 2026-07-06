@@ -39,7 +39,7 @@ function applyPt(m: Matrix, x: number, y: number): [number, number] {
   return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
 
-function fmt(n: number): string {
+export function fmt(n: number): string {
   const s = parseFloat(n.toFixed(3)).toString();
   return s === "-0" ? "0" : s;
 }
@@ -569,6 +569,22 @@ function resolveElement(el: Element, ancestorMatrix: Matrix): void {
 
   for (const child of Array.from(el.children)) {
     resolveElement(child, total);
+  }
+}
+
+// Bakes a uniform scale directly into every descendant's coordinate
+// attributes (path `d`, circle/rect/ellipse geometry, polyline/polygon
+// points, text/tspan positions, line endpoints) via the same per-element
+// matrix logic used by resolveTransforms. A transform="scale(s)" attribute
+// on the layer <g> elements is not an option here: diplicity-react's
+// dsvgParser extracts child elements out of their parent <g> (see the
+// moveElemsAttrsToGroup note in svgOptimize.ts), which would silently drop
+// any transform left on the group.
+export function scaleSubtree(root: Element, scale: number): void {
+  if (scale === 1) return;
+  const m: Matrix = [scale, 0, 0, scale, 0, 0];
+  for (const child of Array.from(root.children)) {
+    resolveElement(child, m);
   }
 }
 

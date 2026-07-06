@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { buildDsvgOutput, buildVisibilityPreviewSvg } from "@/utils/svgBuild";
+import { capDsvgResolution } from "@/utils/svgResolutionCap";
+import type { ResolutionCapResult } from "@/utils/svgResolutionCap";
 import { analyzeSvgFonts, embedFonts } from "@/utils/fontEmbed";
 import type { SvgFontInfo } from "@/utils/fontEmbed";
 import type { SvgTreeNode } from "@/utils/svgTree";
@@ -209,6 +211,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
   const [structureErrors, setStructureErrors] = useState<string[]>([]);
   const [positionErrors, setPositionErrors] = useState<{ missing: string[]; unknown: string[] } | null>(null);
   const [buildWarnings, setBuildWarnings] = useState<string[]>([]);
+  const [resolutionCapInfo, setResolutionCapInfo] = useState<ResolutionCapResult | null>(null);
   const [embedFailed, setEmbedFailed] = useState(false);
   const preEmbedOutputRef = useRef<string | null>(null);
 
@@ -272,6 +275,7 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
     setStructureErrors([]);
     setPositionErrors(null);
     setBuildWarnings([]);
+    setResolutionCapInfo(null);
     setEmbedFailed(false);
     preEmbedOutputRef.current = null;
     try {
@@ -290,6 +294,28 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
         setPositionErrors(validation);
         setBuildWarnings(collectedWarnings);
         return;
+      }
+
+      // Cap the exported resolution to the same budget diplicity-react's game
+      // board rasteriser uses, so oversized maps are scaled down here (once,
+      // predictably) instead of being blurred by the renderer later. The
+      // capped output is re-validated as a safety net, mirroring the SVGO
+      // fallback below: on any failure the original resolution is kept.
+      const capResult = capDsvgResolution(output);
+      if (capResult.capped) {
+        const capPositions = validatePositionConsistency(capResult.output);
+        if (
+          validateDsvgStructure(capResult.output).length > 0 ||
+          capPositions.missing.length > 0 ||
+          capPositions.unknown.length > 0
+        ) {
+          collectedWarnings.push(
+            "Resolution cap skipped: the capped output failed dSVG validation, so the original resolution was used instead."
+          );
+        } else {
+          output = capResult.output;
+          setResolutionCapInfo(capResult);
+        }
       }
 
       // Minify with SVGO (config preserves ids, hidden layers, circles). The
@@ -458,6 +484,14 @@ export function DsvgExport({ svgContent, assignments, unitPositionCodes, namedCo
             </div>
           )}
         </div>
+
+        {resolutionCapInfo?.capped && (
+          <div className="rounded-md border border-blue-500/50 bg-blue-500/10 px-3 py-2 text-xs text-blue-800 dark:text-blue-200">
+            Map resolution capped from {Math.round(resolutionCapInfo.originalWidth)}×{Math.round(resolutionCapInfo.originalHeight)}{" "}
+            (~{(resolutionCapInfo.originalWidth * resolutionCapInfo.originalHeight / 1_000_000).toFixed(1)} MP) to{" "}
+            {Math.round(resolutionCapInfo.scaledWidth)}×{Math.round(resolutionCapInfo.scaledHeight)} (4 MP) to avoid blurring on mobile devices.
+          </div>
+        )}
 
         {buildWarnings.length > 0 && (
           <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-800 dark:text-yellow-200 space-y-1.5">
