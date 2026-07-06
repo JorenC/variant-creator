@@ -68,6 +68,7 @@ import { DominanceRulesForm, type DominanceRulesFormHandle } from "@/components/
 import { PhaseProgressionForm, type PhaseProgressionFormHandle } from "@/components/dvar/PhaseProgressionForm";
 import { VictoryConditionsForm, type VictoryConditionsFormHandle } from "@/components/dvar/VictoryConditionsForm";
 import { AdjudicationModifiersForm, type AdjudicationModifiersFormHandle } from "@/components/dvar/AdjudicationModifiersForm";
+import { UnitScalingForm, type UnitScalingFormHandle } from "@/components/dvar/UnitScalingForm";
 import { ExportStep } from "@/components/dvar/ExportStep";
 
 export function DvarCreator() {
@@ -88,6 +89,7 @@ export function DvarCreator() {
   const [phaseProgressionData, setPhaseProgressionData] = useState<PhaseProgressionData | null>(null);
   const [victoryConditionsData, setVictoryConditionsData] = useState<VictoryConditionsData | null>(null);
   const [adjudicationModifiersData, setAdjudicationModifiersData] = useState<string[] | null>(null);
+  const [unitScalingData, setUnitScalingData] = useState<number>(1);
   const [neutralName, setNeutralName] = useState<string>(NEUTRAL_NATION.name);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +113,7 @@ export function DvarCreator() {
   const phaseProgressionRef = useRef<PhaseProgressionFormHandle>(null);
   const victoryConditionsRef = useRef<VictoryConditionsFormHandle>(null);
   const adjudicationModifiersRef = useRef<AdjudicationModifiersFormHandle>(null);
+  const unitScalingRef = useRef<UnitScalingFormHandle>(null);
   const hasWork = step !== "upload" || svgContent !== null || pendingDvar !== null;
   const { allowNavigation } = useUnsavedWorkGuard(hasWork && !(step === "export" && exportDownloaded));
 
@@ -269,6 +272,9 @@ export function DvarCreator() {
     // adjudication modifiers
     setAdjudicationModifiersData(dvar.adjudicationModifiers ?? []);
 
+    // unit scaling
+    setUnitScalingData(dvar.unitScaling ?? 1);
+
     setPreFillWarnings([...pendingDvarDropped, ...collectPreFillWarnings(dvar)]);
   };
 
@@ -406,6 +412,7 @@ export function DvarCreator() {
     setPhaseProgressionData(null);
     setVictoryConditionsData(null);
     setAdjudicationModifiersData(null);
+    setUnitScalingData(1);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setPendingDvar(null);
     setPendingDvarFileName(null);
@@ -444,6 +451,7 @@ export function DvarCreator() {
     let currentPhaseProgressionData = phaseProgressionData;
     let currentVictoryConditionsData = victoryConditionsData;
     let currentAdjudicationModifiersData = adjudicationModifiersData;
+    let currentUnitScalingData = unitScalingData;
 
     if (step === "basic-info" && basicInfoRef.current) {
       currentBasicInfo = basicInfoRef.current.getValues();
@@ -505,6 +513,9 @@ export function DvarCreator() {
     } else if (step === "adjudication-modifiers" && adjudicationModifiersRef.current) {
       currentAdjudicationModifiersData = adjudicationModifiersRef.current.getValues();
       setAdjudicationModifiersData(currentAdjudicationModifiersData);
+    } else if (step === "unit-scaling" && unitScalingRef.current) {
+      currentUnitScalingData = unitScalingRef.current.getValues();
+      setUnitScalingData(currentUnitScalingData);
     }
 
     return {
@@ -518,6 +529,7 @@ export function DvarCreator() {
       phaseProgressionData: currentPhaseProgressionData,
       victoryConditionsData: currentVictoryConditionsData,
       adjudicationModifiersData: currentAdjudicationModifiersData,
+      unitScalingData: currentUnitScalingData,
     };
   };
 
@@ -543,7 +555,8 @@ export function DvarCreator() {
     if (step === "phase-progression") setStep("dominance-rules");
     if (step === "victory-conditions") setStep("phase-progression");
     if (step === "adjudication-modifiers") setStep("victory-conditions");
-    if (step === "export") setStep("adjudication-modifiers");
+    if (step === "unit-scaling") setStep("adjudication-modifiers");
+    if (step === "export") setStep("unit-scaling");
   };
 
   const handleBasicInfoSubmit = (values: BasicInfoValues) => {
@@ -635,6 +648,11 @@ export function DvarCreator() {
 
   const handleAdjudicationModifiersSubmit = (data: string[]) => {
     setAdjudicationModifiersData(data);
+    setStep("unit-scaling");
+  };
+
+  const handleUnitScalingSubmit = (data: number) => {
+    setUnitScalingData(data);
     setStep("export");
   };
 
@@ -644,6 +662,7 @@ export function DvarCreator() {
       snapshot.basicInfo, snapshot.nations, snapshot.provincesData, snapshot.homeNationsData,
       snapshot.adjacenciesData, snapshot.dominanceRulesData, snapshot.phaseProgressionData,
       snapshot.victoryConditionsData, snapshot.adjudicationModifiersData, snapshot.extraUnitsData,
+      snapshot.unitScalingData,
     );
     const id = snapshot.basicInfo?.id?.trim() || fileName?.replace(/\.d\.svg$/i, "") || "draft";
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
@@ -995,6 +1014,20 @@ export function DvarCreator() {
               />
             )}
 
+            {step === "unit-scaling" && svgContent && provincesData && nations && (
+              <UnitScalingForm
+                ref={unitScalingRef}
+                svgContent={svgContent}
+                provinces={provincesData.provinces}
+                homeNationsData={homeNationsData ?? {}}
+                extraUnits={extraUnitsData ?? []}
+                adjacenciesData={adjacenciesData ?? {}}
+                nations={nations}
+                defaultValue={unitScalingData}
+                onSubmit={handleUnitScalingSubmit}
+              />
+            )}
+
             {step === "export" && basicInfo && nations && provincesData && homeNationsData && adjacenciesData && dominanceRulesData && phaseProgressionData && victoryConditionsData && (
               <ExportStep
                 onDownloaded={() => setExportDownloaded(true)}
@@ -1009,6 +1042,7 @@ export function DvarCreator() {
                 phaseProgressionData={phaseProgressionData}
                 victoryConditionsData={victoryConditionsData}
                 adjudicationModifiersData={adjudicationModifiersData ?? []}
+                unitScalingData={unitScalingData}
                 neutralName={neutralName}
               />
             )}
@@ -1053,6 +1087,11 @@ export function DvarCreator() {
                     </Button>
                   ) : step === "adjudication-modifiers" ? (
                     <Button onClick={() => adjudicationModifiersRef.current?.submit()}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  ) : step === "unit-scaling" ? (
+                    <Button onClick={() => unitScalingRef.current?.submit()}>
                       Next
                       <ChevronRight className="h-4 w-4" />
                     </Button>

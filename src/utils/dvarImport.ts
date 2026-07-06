@@ -184,6 +184,10 @@ export function sanitizeDvarImport(raw: unknown): SanitizedDvarImport | null {
     description: str(raw.description),
     author: str(raw.author),
     rules: str(raw.rules),
+    unitScaling: (() => {
+      const n = num(raw.unitScaling);
+      return n !== undefined && n >= 0.1 && n <= 10 ? n : undefined;
+    })(),
     nations,
     provinces,
     namedCoasts,

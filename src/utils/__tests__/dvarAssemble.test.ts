@@ -76,6 +76,7 @@ function baseInput(): AssembleDvarInput {
     ],
     victoryConditionsData: [{ type: "supply-center-majority", supplyCenters: 18 }],
     adjudicationModifiersData: [],
+    unitScalingData: 1,
   };
 }
 
@@ -108,6 +109,7 @@ describe("assembleDvar", () => {
     expect(withoutOptionals.rules).toBeUndefined();
     expect(withoutOptionals.adjudicationModifiers).toBeUndefined();
     expect(withoutOptionals.dominanceRules).toBeUndefined();
+    expect(withoutOptionals.unitScaling).toBeUndefined();
 
     const input = baseInput();
     input.basicInfo.rules = "Be nice";
@@ -115,10 +117,12 @@ describe("assembleDvar", () => {
     input.dominanceRulesData = {
       gas: { enabled: true, provinceOccupier: "fra", conditions: { spa: "empty" } },
     };
+    input.unitScalingData = 0.8;
     const withOptionals = assembleDvar(input) as Record<string, unknown>;
     expect(withOptionals.rules).toBe("Be nice");
     expect(withOptionals.adjudicationModifiers).toEqual(["allow-builds-in-non-home-centers"]);
     expect((withOptionals.dominanceRules as unknown[]).length).toBe(1);
+    expect(withOptionals.unitScaling).toBe(0.8);
   });
 
   it("emits the neutral-rebuild modifier when present, alongside other modifiers", () => {
@@ -174,6 +178,7 @@ describe("assembleDvar", () => {
         { type: "timed-resolution", year: 1920, resolution: "most-supply-centers" },
       ],
       adjudicationModifiersData: ["allow-builds-in-non-home-centers"],
+      unitScalingData: 1,
     };
 
     const output = assembleDvar(input);
@@ -185,6 +190,20 @@ describe("assembleDvar", () => {
         result.error.issues.map(i => `  ${i.path.join(".")}: ${i.message}`).join("\n")
       );
     }
+  });
+
+  it("rejects unitScaling outside 0.1-10 and accepts values within range", () => {
+    const schemaValidInput = { ...baseInput(), nations: [{ id: "fra", name: "France", color: "#FFFFFF" }] };
+
+    const tooSmall = assembleDvar({ ...schemaValidInput, unitScalingData: 0.05 });
+    expect(DvarSchema.safeParse(tooSmall).success).toBe(false);
+
+    const tooLarge = assembleDvar({ ...schemaValidInput, unitScalingData: 15 });
+    expect(DvarSchema.safeParse(tooLarge).success).toBe(false);
+
+    const inRange = assembleDvar({ ...schemaValidInput, unitScalingData: 0.8 }) as Record<string, unknown>;
+    expect(inRange.unitScaling).toBe(0.8);
+    expect(DvarSchema.safeParse(inRange).success).toBe(true);
   });
 
   describe("startingUnit: null (N — no starting unit)", () => {

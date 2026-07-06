@@ -26,6 +26,7 @@ export type Step =
   | "phase-progression"
   | "victory-conditions"
   | "adjudication-modifiers"
+  | "unit-scaling"
   | "export";
 
 // ─── Collected wizard data ──────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ export interface DvarJson {
   description?: string;
   author?: string;
   rules?: string;
+  unitScaling?: number;
   nations?: DvarJsonNation[];
   provinces?: DvarJsonProvince[];
   namedCoasts?: DvarJsonNamedCoast[];
@@ -155,6 +157,7 @@ export interface AssembleDvarInput {
   phaseProgressionData: PhaseProgressionData;
   victoryConditionsData: VictoryConditionsData;
   adjudicationModifiersData: string[];
+  unitScalingData: number;
   /** Display name for the auto-generated non-playable neutral power. Defaults to "Neutral". */
   neutralName?: string;
 }
