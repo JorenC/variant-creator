@@ -13,6 +13,7 @@ export const DVAR_STEPS = [
   { key: "phase-progression",       label: "Phases"        },
   { key: "victory-conditions",      label: "Victory"       },
   { key: "adjudication-modifiers",  label: "Rules"         },
+  { key: "unit-scaling",            label: "Unit scaling"  },
   { key: "export",                  label: "Export"        },
 ];
 
@@ -57,6 +58,10 @@ export const STEP_META: Record<Exclude<Step, "upload" | "reconcile">, { title: s
   "adjudication-modifiers": {
     title: "Game Rules",
     subtitle: "Configure adjudicator rule modifiers for this variant.",
+  },
+  "unit-scaling": {
+    title: "Unit Scaling",
+    subtitle: "Set how large units and orders should render relative to the map. The preview updates as you drag — use it to judge what looks right for your map.",
   },
   export: {
     title: "Review & Export",

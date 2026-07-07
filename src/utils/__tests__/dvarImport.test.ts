@@ -66,4 +66,10 @@ describe("sanitizeDvarImport", () => {
     ]);
     expect(result.dropped.some(d => d.includes("mystery-mode"))).toBe(true);
   });
+
+  it("passes through a valid unitScaling and drops an out-of-range one", () => {
+    expect(sanitizeDvarImport({ unitScaling: 0.8 })!.dvar.unitScaling).toBe(0.8);
+    expect(sanitizeDvarImport({ unitScaling: 15 })!.dvar.unitScaling).toBeUndefined();
+    expect(sanitizeDvarImport({})!.dvar.unitScaling).toBeUndefined();
+  });
 });

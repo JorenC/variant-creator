@@ -200,6 +200,7 @@ export function assembleDvar({
   phaseProgressionData,
   victoryConditionsData,
   adjudicationModifiersData,
+  unitScalingData,
   neutralName,
 }: AssembleDvarInput): Record<string, unknown> {
   const provinces = provincesData.provinces.map(p => {
@@ -310,6 +311,7 @@ export function assembleDvar({
   };
 
   if (basicInfo.rules?.trim()) output.rules = basicInfo.rules;
+  if (unitScalingData !== 1) output.unitScaling = unitScalingData;
   if (adjudicationModifiersData.length > 0) output.adjudicationModifiers = adjudicationModifiersData;
   if (dominanceRules.length > 0) output.dominanceRules = dominanceRules;
 
@@ -328,6 +330,7 @@ export function assemblePartialDvar(
   victoryConditionsData: VictoryConditionsData | null,
   adjudicationModifiersData: string[] | null,
   extraUnits: ExtraUnit[] | null,
+  unitScalingData: number | null,
 ): Record<string, unknown> {
   return assembleDvar({
     basicInfo: basicInfo ?? { id: "", name: "", description: "", author: "", startYear: 1901, rules: "" },
@@ -340,5 +343,6 @@ export function assemblePartialDvar(
     phaseProgressionData: phaseProgressionData ?? [],
     victoryConditionsData: victoryConditionsData ?? [],
     adjudicationModifiersData: adjudicationModifiersData ?? [],
+    unitScalingData: unitScalingData ?? 1,
   });
 }

@@ -85,6 +85,7 @@ export const DvarSchema = z.object({
   description: z.string(),
   author: z.string(),
   rules: z.string().optional(),
+  unitScaling: z.number().min(0.1).max(10).optional(),
   victoryConditions: z.array(VictoryCondition).min(1),
   adjudicationModifiers: z.array(z.string()).optional(),
   phaseProgression: z.object({
