@@ -272,8 +272,10 @@ export function DvarCreator() {
     // adjudication modifiers
     setAdjudicationModifiersData(dvar.adjudicationModifiers ?? []);
 
-    // unit scaling
-    setUnitScalingData(dvar.unitScaling ?? 1);
+    // unit scaling — locked to 1 until diplicity-react's variant schema
+    // supports this field; ignore any non-default value an imported dvar
+    // carries so a re-export can't reintroduce a value the server rejects.
+    setUnitScalingData(1);
 
     setPreFillWarnings([...pendingDvarDropped, ...collectPreFillWarnings(dvar)]);
   };
