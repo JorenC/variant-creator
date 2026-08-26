@@ -225,6 +225,25 @@ describe("collectPreFillWarnings", () => {
     expect(collectPreFillWarnings(dvar)).toEqual([]);
   });
 
+  it("does not warn for the allow-builds-in-any-home-center modifier", () => {
+    const dvar: DvarJson = {
+      adjudicationModifiers: ["allow-builds-in-any-home-center"],
+    };
+
+    expect(collectPreFillWarnings(dvar)).toEqual([]);
+  });
+
+  it("warns when both build modifiers are present (build-anywhere wins)", () => {
+    const dvar: DvarJson = {
+      adjudicationModifiers: ["allow-builds-in-non-home-centers", "allow-builds-in-any-home-center"],
+    };
+
+    const warnings = collectPreFillWarnings(dvar);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/mutually exclusive/);
+    expect(warnings[0]).toMatch(/allow-builds-in-any-home-center" will be dropped/);
+  });
+
   it("warns for each unknown modifier independently", () => {
     const dvar: DvarJson = {
       adjudicationModifiers: ["ScLevelPayoffs", "ChaosDiplomacy", "allow-builds-in-non-home-centers"],
