@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { extractDsvgProvinceShapes, buildProvincePreviewSvg } from "@/utils/dvarPreview";
@@ -55,8 +55,10 @@ function arrowHeadPoints(from: { x: number; y: number }, to: { x: number; y: num
 }
 
 export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingFormProps>(
-  ({ svgContent, provinces, homeNationsData, extraUnits, adjacenciesData, nations, defaultValue, onSubmit }, ref) => {
-    const [scale, setScale] = useState(defaultValue);
+  ({ svgContent, provinces, homeNationsData, extraUnits, adjacenciesData, nations, onSubmit }, ref) => {
+    // Locked to the default until diplicity-react's variant schema supports this
+    // field (uploading a non-default value fails schema validation there today).
+    const scale = 1;
 
     useImperativeHandle(ref, () => ({
       submit: () => onSubmit(scale),
@@ -147,11 +149,7 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
               max={MAX_SCALE}
               step={0.05}
               value={scale}
-              onChange={e => {
-                const next = Number(e.target.value);
-                if (!isFinite(next)) return;
-                setScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, next)));
-              }}
+              disabled
               className="w-24"
             />
           </div>
@@ -161,10 +159,10 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
             max={MAX_SCALE}
             step={0.05}
             value={[scale]}
-            onValueChange={([next]) => setScale(next)}
+            disabled
           />
           <p className="text-sm text-muted-foreground">
-            1 = default size. Below 1 shrinks units and order arrows relative to the map, above 1 enlarges them.
+            Support for this in diplicity is coming soon — units and order arrows will render at their default size for now.
           </p>
         </div>
 
