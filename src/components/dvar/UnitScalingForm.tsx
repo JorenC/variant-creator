@@ -1,10 +1,26 @@
-import { forwardRef, useImperativeHandle, useMemo } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { extractDsvgProvinceShapes, buildProvincePreviewSvg } from "@/utils/dvarPreview";
 import { prepareShape, disposeShape } from "@/utils/geometry";
 import { aspectRatioFromViewBox } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
+import { octagon, arrow, formatCoord, type Point } from "@/utils/orderPrimitives";
+import {
+  UNIT_RADIUS,
+  UNIT_STROKE_WIDTH,
+  UNIT_LABEL_FONT_SIZE,
+  UNIT_LABEL_BASELINE_DY,
+  ORDER_LINE_WIDTH,
+  ORDER_ARROW_WIDTH,
+  ORDER_ARROW_LENGTH,
+  ORDER_STROKE_WIDTH,
+  ORDER_DASH,
+  ORDER_SUCCESS_COLOR,
+  HOLD_OCTAGON_SIZE,
+  MIN_UNIT_SCALE,
+  MAX_UNIT_SCALE,
+} from "@/utils/unitRenderMetrics";
 import type { DvarAdjacencyMap } from "@/utils/dvarAdjacency";
 import type { ExtraUnit, HomeNationsData, ProvincesFormValues } from "@/types/dvar";
 
@@ -24,41 +40,69 @@ interface UnitScalingFormProps {
   onSubmit: (value: number) => void;
 }
 
-const MIN_SCALE = 0.1;
-const MAX_SCALE = 10;
-
-// Illustrative sizes only — approximate the proportions of diplicity-react's
-// production unit/order rendering (packages/web .../InteractiveMap/mapRenderer.ts)
-// closely enough to judge relative scale. Not a pixel-for-pixel port.
-const BASE_UNIT_RADIUS = 10;
-const BASE_HOLD_RING_RADIUS = 14;
-const BASE_LINE_WIDTH = 3;
-const BASE_ARROW_WIDTH = 6;
-const BASE_ARROW_LENGTH = 10;
+const STEP = 0.05;
+const clamp = (value: number): number =>
+  Math.min(MAX_UNIT_SCALE, Math.max(MIN_UNIT_SCALE, value));
 
 type PreviewUnit = { province: string; type: "army" | "fleet"; color: string };
 type PreviewOrder = { from: string; to?: string; kind: "hold" | "move" | "support" };
 
-function arrowHeadPoints(from: { x: number; y: number }, to: { x: number; y: number }, scale: number): string {
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const length = BASE_ARROW_LENGTH * scale;
-  const width = BASE_ARROW_WIDTH * scale;
-  const backX = to.x - length * Math.cos(angle);
-  const backY = to.y - length * Math.sin(angle);
-  const perpX = Math.sin(angle) * width;
-  const perpY = -Math.cos(angle) * width;
-  return [
-    `${to.x},${to.y}`,
-    `${backX + perpX},${backY + perpY}`,
-    `${backX - perpX},${backY - perpY}`,
-  ].join(" ");
+/**
+ * Faithful port of `unitToken` from diplicity-react's mapRenderer.ts — a
+ * nation-coloured circle of radius `UNIT_RADIUS * scale` with a black "A"/"F"
+ * label. The `+ UNIT_LABEL_BASELINE_DY` baseline nudge is applied unscaled
+ * there, so it is mirrored unscaled here.
+ */
+function unitTokenMarkup(cx: number, cy: number, type: "army" | "fleet", color: string, scale: number): string {
+  const label = type === "army" ? "A" : "F";
+  return (
+    `<circle cx="${formatCoord(cx)}" cy="${formatCoord(cy)}" r="${formatCoord(UNIT_RADIUS * scale)}"` +
+    ` fill="${color}" stroke="black" stroke-width="${formatCoord(UNIT_STROKE_WIDTH * scale)}"/>` +
+    `<text x="${formatCoord(cx)}" y="${formatCoord(cy + UNIT_LABEL_BASELINE_DY)}"` +
+    ` font-size="${formatCoord(UNIT_LABEL_FONT_SIZE * scale)}" font-weight="bold" fill="black" text-anchor="middle">${label}</text>`
+  );
+}
+
+/** Mirror of `holdMarkup`: a transparent octagon stroked at the order line width. */
+function holdMarkup(at: Point, scale: number): string {
+  return octagon({
+    x: at.x,
+    y: at.y,
+    size: HOLD_OCTAGON_SIZE * scale,
+    fill: "transparent",
+    stroke: ORDER_SUCCESS_COLOR,
+    strokeWidth: ORDER_LINE_WIDTH * scale,
+  });
+}
+
+/**
+ * Mirror of the plain-move arrow in `moveOrderParts`. Support orders reuse the
+ * same primitive with the scaled `ORDER_DASH` pattern; production curves the
+ * support arrow, but every width/length is identical, which is what the scale
+ * preview needs to show.
+ */
+function orderArrowMarkup(from: Point, to: Point, color: string, scale: number, dashed: boolean): string {
+  return arrow({
+    x1: from.x,
+    y1: from.y,
+    x2: to.x,
+    y2: to.y,
+    lineWidth: ORDER_LINE_WIDTH * scale,
+    arrowWidth: ORDER_ARROW_WIDTH * scale,
+    arrowLength: ORDER_ARROW_LENGTH * scale,
+    strokeWidth: ORDER_STROKE_WIDTH * scale,
+    offset: UNIT_RADIUS * scale,
+    stroke: ORDER_SUCCESS_COLOR,
+    fill: color,
+    dash: dashed
+      ? { length: ORDER_DASH.length * scale, spacing: ORDER_DASH.spacing * scale }
+      : undefined,
+  });
 }
 
 export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingFormProps>(
-  ({ svgContent, provinces, homeNationsData, extraUnits, adjacenciesData, nations, onSubmit }, ref) => {
-    // Locked to the default until diplicity-react's variant schema supports this
-    // field (uploading a non-default value fails schema validation there today).
-    const scale = 1;
+  ({ svgContent, provinces, homeNationsData, extraUnits, adjacenciesData, nations, defaultValue, onSubmit }, ref) => {
+    const [scale, setScale] = useState(clamp(defaultValue));
 
     useImperativeHandle(ref, () => ({
       submit: () => onSubmit(scale),
@@ -135,6 +179,30 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
       return next;
     }, [shapes, neededIds]);
 
+    // Units first, then orders on top — the same layer order as
+    // DiplicityMap.render(). Uses the ported primitives + shared metrics so
+    // sizes track diplicity-react's renderer exactly at any scale.
+    const overlayMarkup = useMemo(() => {
+      const units = previewUnits
+        .map(unit => {
+          const c = centers[unit.province];
+          return c ? unitTokenMarkup(c.x, c.y, unit.type, unit.color, scale) : "";
+        })
+        .join("");
+      const orders = previewOrders
+        .map(order => {
+          const from = centers[order.from];
+          if (!from) return "";
+          if (order.kind === "hold") return holdMarkup(from, scale);
+          const to = order.to ? centers[order.to] : undefined;
+          if (!to) return "";
+          const unit = previewUnits.find(u => u.province === order.from);
+          return orderArrowMarkup(from, to, unit?.color ?? "#6b7280", scale, order.kind === "support");
+        })
+        .join("");
+      return `${units}${orders}`;
+    }, [previewUnits, previewOrders, centers, scale]);
+
     return (
       <div className="space-y-6">
         <div className="space-y-3 rounded-lg border p-4">
@@ -145,24 +213,28 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
             <Input
               id="unit-scale-input"
               type="number"
-              min={MIN_SCALE}
-              max={MAX_SCALE}
-              step={0.05}
+              min={MIN_UNIT_SCALE}
+              max={MAX_UNIT_SCALE}
+              step={STEP}
               value={scale}
-              disabled
+              onChange={e => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next)) return;
+                setScale(clamp(next));
+              }}
               className="w-24"
             />
           </div>
           <Slider
             id="unit-scale"
-            min={MIN_SCALE}
-            max={MAX_SCALE}
-            step={0.05}
+            min={MIN_UNIT_SCALE}
+            max={MAX_UNIT_SCALE}
+            step={STEP}
             value={[scale]}
-            disabled
+            onValueChange={([next]) => setScale(next)}
           />
           <p className="text-sm text-muted-foreground">
-            Support for this in diplicity is coming soon — units and order arrows will render at their default size for now.
+            1 = default size. Below 1 shrinks units and order arrows relative to the map, above 1 enlarges them. The map itself is unaffected.
           </p>
         </div>
 
@@ -180,61 +252,7 @@ export const UnitScalingForm = forwardRef<UnitScalingFormHandle, UnitScalingForm
                   ))}
                 </g>
               ))}
-
-            {previewOrders.map((order, i) => {
-              const from = centers[order.from];
-              if (!from) return null;
-              if (order.kind === "hold") {
-                return (
-                  <circle
-                    key={i}
-                    cx={from.x}
-                    cy={from.y}
-                    r={BASE_HOLD_RING_RADIUS * scale}
-                    fill="none"
-                    stroke="#111827"
-                    strokeWidth={2 * scale}
-                  />
-                );
-              }
-              const to = order.to ? centers[order.to] : undefined;
-              if (!to) return null;
-              const dashed = order.kind === "support";
-              return (
-                <g key={i}>
-                  <line
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
-                    stroke="#111827"
-                    strokeWidth={BASE_LINE_WIDTH * scale}
-                    strokeDasharray={dashed ? `${6 * scale} ${4 * scale}` : undefined}
-                  />
-                  <polygon points={arrowHeadPoints(from, to, scale)} fill="#111827" />
-                </g>
-              );
-            })}
-
-            {previewUnits.map((unit, i) => {
-              const c = centers[unit.province];
-              if (!c) return null;
-              const r = BASE_UNIT_RADIUS * scale;
-              return unit.type === "army" ? (
-                <circle key={i} cx={c.x} cy={c.y} r={r} fill={unit.color} stroke="#111827" strokeWidth={1.5} />
-              ) : (
-                <rect
-                  key={i}
-                  x={c.x - r}
-                  y={c.y - r}
-                  width={r * 2}
-                  height={r * 2}
-                  fill={unit.color}
-                  stroke="#111827"
-                  strokeWidth={1.5}
-                />
-              );
-            })}
+            <g dangerouslySetInnerHTML={{ __html: overlayMarkup }} />
           </svg>
         </div>
       </div>
