@@ -50,15 +50,16 @@ type PreviewOrder = { from: string; to?: string; kind: "hold" | "move" | "suppor
 /**
  * Faithful port of `unitToken` from diplicity-react's mapRenderer.ts — a
  * nation-coloured circle of radius `UNIT_RADIUS * scale` with a black "A"/"F"
- * label. The `+ UNIT_LABEL_BASELINE_DY` baseline nudge is applied unscaled
- * there, so it is mirrored unscaled here.
+ * label. The `+ UNIT_LABEL_BASELINE_DY` baseline nudge is scaled along with the
+ * font size so the glyph stays centred in the circle at every scale — the whole
+ * token is then a uniform zoom of its scale-1 rendering about `(cx, cy)`.
  */
 function unitTokenMarkup(cx: number, cy: number, type: "army" | "fleet", color: string, scale: number): string {
   const label = type === "army" ? "A" : "F";
   return (
     `<circle cx="${formatCoord(cx)}" cy="${formatCoord(cy)}" r="${formatCoord(UNIT_RADIUS * scale)}"` +
     ` fill="${color}" stroke="black" stroke-width="${formatCoord(UNIT_STROKE_WIDTH * scale)}"/>` +
-    `<text x="${formatCoord(cx)}" y="${formatCoord(cy + UNIT_LABEL_BASELINE_DY)}"` +
+    `<text x="${formatCoord(cx)}" y="${formatCoord(cy + UNIT_LABEL_BASELINE_DY * scale)}"` +
     ` font-size="${formatCoord(UNIT_LABEL_FONT_SIZE * scale)}" font-weight="bold" fill="black" text-anchor="middle">${label}</text>`
   );
 }
