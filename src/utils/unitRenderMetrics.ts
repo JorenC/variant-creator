@@ -32,9 +32,10 @@ export const UNIT_STROKE_WIDTH = 2;
 /** `font-size` of the "A"/"F" label inside the unit circle. */
 export const UNIT_LABEL_FONT_SIZE = 15;
 /**
- * Baseline drop of the "A"/"F" label from the circle centre. NOTE: in
- * `mapRenderer.ts` this `cy + 5` offset is applied *unscaled* (only the
- * font-size scales), so it is mirrored unscaled here.
+ * Baseline drop of the "A"/"F" label from the circle centre, at scale 1. This
+ * offset is multiplied by the unit scale alongside the font-size so the glyph
+ * stays centred in the circle at every scale (see `unitTokenMarkup`). Keep
+ * `mapRenderer.ts`'s `cy + 5 * scale` in sync.
  */
 export const UNIT_LABEL_BASELINE_DY = 5;
 
