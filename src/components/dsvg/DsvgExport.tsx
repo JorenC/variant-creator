@@ -23,6 +23,39 @@ interface DsvgExportProps {
   onLeaveApproved?: () => void;
 }
 
+// When the built dSVG fails to re-parse as XML, the usual cause is a leftover
+// namespaced attribute (e.g. inkscape:label) left dangling without an xmlns
+// binding. That happens when a province / named-coast is a <rect>, <circle>, or
+// <ellipse> rather than a <path>: the exporter converts the shape to a <path>
+// and carries its attributes along by name, so the prefix survives even after
+// the root inkscape/sodipodi namespace declarations are stripped — which XML
+// rejects as an "unbound namespace prefix". Detect that and point at the fix.
+function explainInvalidXml(builtSvg: string, parserErrorText: string): string {
+  const base = "Output SVG is not valid XML.";
+
+  const strayAttr = builtSvg.match(
+    /<(?:path|rect|circle|ellipse|polygon|polyline)\b[^>]*?\s((?:inkscape|sodipodi):[\w-]+)=/i
+  )?.[1];
+  const unboundPrefix = parserErrorText.match(
+    /unbound namespace prefix[:\s]+["']?([\w-]+)/i
+  )?.[1];
+
+  if (strayAttr || unboundPrefix) {
+    const which = strayAttr
+      ? `A shape carries a stray "${strayAttr}" attribute`
+      : `An element carries a stray "${unboundPrefix}:"-prefixed attribute`;
+    return (
+      `${base} ${which} with no matching namespace declaration. This usually means a ` +
+      `province or named coast is a <rect>, <circle>, or <ellipse> instead of a <path>: ` +
+      `the exporter converts it to a <path> but the Inkscape attribute is carried along ` +
+      `and left dangling. In Inkscape, select those shapes and run Path > Object to Path, ` +
+      `then re-upload the SVG.`
+    );
+  }
+
+  return base;
+}
+
 // Checks that required layers are direct children of the root <svg> element,
 // matching what the diplicity-react dsvgParser.findLayer() expects.
 function validateDsvgStructure(svgContent: string): string[] {
@@ -30,8 +63,9 @@ function validateDsvgStructure(svgContent: string): string[] {
   const doc = parser.parseFromString(svgContent, "image/svg+xml");
   const errors: string[] = [];
 
-  if (doc.querySelector("parsererror")) {
-    return ["Output SVG is not valid XML."];
+  const parserError = doc.querySelector("parsererror");
+  if (parserError) {
+    return [explainInvalidXml(svgContent, parserError.textContent ?? "")];
   }
 
   const root = doc.documentElement;
