@@ -443,4 +443,31 @@ describe("buildDsvgOutput – compound path concatenation", () => {
     // (10, 10) + relative (50, 50) = (60, 60).
     expect(merged.getAttribute("d")).toBe("M 0 0 L 10 0 L 10 10 Z M 50 50 L 60 50 L 60 60 Z");
   });
+
+  it("carries fill-rule/clip-rule from the first child onto the merged path", () => {
+    // A compound child (its own d already has several subpaths, e.g. a
+    // coastline with island holes) needs evenodd to render correctly; losing
+    // this attribute during the merge makes the browser fall back to nonzero
+    // and mis-fill the combined shape (solid blocks where holes should be).
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="provs">
+    <g id="mao">
+      <path fill="#a3ace0" fill-rule="evenodd" clip-rule="evenodd" d="M0 0 L10 0 L10 10 Z"/>
+      <path fill="#a3ace0" d="M50 50 L60 50 L60 60 Z"/>
+    </g>
+  </g>
+</svg>`;
+    const output = buildDsvgOutput(svg, {
+      provinces: "root-0",
+      namedCoasts: null,
+      unitPositions: null,
+      provinceNames: null,
+      borders: null,
+      supplyCenters: null,
+    });
+    const doc = new DOMParser().parseFromString(output, "image/svg+xml");
+    const merged = doc.getElementById("mao")!;
+    expect(merged.getAttribute("fill-rule")).toBe("evenodd");
+    expect(merged.getAttribute("clip-rule")).toBe("evenodd");
+  });
 });

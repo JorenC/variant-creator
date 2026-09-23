@@ -182,13 +182,25 @@ export function tokenizePathData(d: string): PathCmd[] {
   for (let i = 0; i < parts.length; i++) {
     const cmd = parts[i];
     if (!/^[MmZzLlHhVvCcSsQqTtAa]$/.test(cmd)) continue;
-    const rawArgs = (parts[i + 1] ?? "").trim();
-    i++;
 
+    // Z/z takes no arguments and therefore has no args slot of its own in
+    // `parts`. Critically, it must not consume parts[i + 1]: when a Z is
+    // immediately followed by another command with zero characters between
+    // them (e.g. Figma/SVGO's compact "...877.115ZM1025.27 454.26L..."),
+    // split() still emits an empty "" between the two command letters, but
+    // the .filter(s => s !== "") above drops it — so parts[i + 1] is really
+    // the *next command's letter* (here "M"), not an args string. Grabbing
+    // and discarding it here (as this code used to, unconditionally, before
+    // checking for Z) silently deletes that next command and its coordinates
+    // from the token stream, turning a moveto to a new disconnected subpath
+    // into a stray line from the old point to the following command's target.
     if (cmd === "Z" || cmd === "z") {
       result.push({ cmd, args: [] });
       continue;
     }
+
+    const rawArgs = (parts[i + 1] ?? "").trim();
+    i++;
 
     const upper = cmd.toUpperCase();
     let n: number;

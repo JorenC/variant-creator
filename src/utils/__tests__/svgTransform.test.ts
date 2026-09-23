@@ -198,6 +198,34 @@ describe("pathToAbsolute", () => {
   it("keeps absolute commands intact", () => {
     expect(pathToAbsolute("M 5 5 L 15 5 Z")).toBe("M 5 5 L 15 5 Z");
   });
+
+  // Figma/SVGO routinely serialize a closepath immediately followed by the
+  // next subpath's moveto with zero characters between them (e.g. "...Z M10
+  // 10..." written as "...ZM10 10..."). A prior bug made the tokenizer treat
+  // that following "M"/"m" as Z's (nonexistent) argument text and discard it
+  // along with its coordinates, silently deleting an entire disconnected
+  // subpath's moveto and turning multi-island provinces into one shape
+  // connected by stray straight lines across the map.
+  it("preserves a moveto that immediately abuts the previous closepath", () => {
+    expect(pathToAbsolute("M0 0L10 0L10 10ZM50 50L60 50L60 60Z")).toBe(
+      "M 0 0 L 10 0 L 10 10 Z M 50 50 L 60 50 L 60 60 Z"
+    );
+  });
+
+  it("preserves a relative moveto that immediately abuts the previous closepath", () => {
+    expect(pathToAbsolute("M0 0L10 0L10 10Zm50 50l10 0l0 10z")).toBe(
+      "M 0 0 L 10 0 L 10 10 Z M 50 50 L 60 50 L 60 60 Z"
+    );
+  });
+
+  it("preserves many back-to-back Z+moveto subpaths (archipelago provinces)", () => {
+    const d = "M0 0L1 0L1 1ZM10 10L11 10L11 11ZM20 20L21 20L21 21Zm30 0l1 0l0 1z";
+    const abs = pathToAbsolute(d);
+    expect((abs.match(/[M]/g) ?? []).length).toBe(4);
+    expect(abs).toBe(
+      "M 0 0 L 1 0 L 1 1 Z M 10 10 L 11 10 L 11 11 Z M 20 20 L 21 20 L 21 21 Z M 50 20 L 51 20 L 51 21 Z"
+    );
+  });
 });
 
 describe("resolveTransforms – rotated shapes become paths", () => {
