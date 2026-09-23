@@ -258,6 +258,14 @@ function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
       if (fill) merged.setAttribute("fill", fill);
       const style = firstPath.getAttribute("style");
       if (style) merged.setAttribute("style", style);
+      // A compound child (e.g. a coastline whose own d already carries several
+      // subpaths) needs evenodd to resolve correctly; carry it to the merged
+      // path too, or the browser falls back to nonzero and mis-fills the
+      // combined multi-island shape (solid blocks where holes/edges should be).
+      const fillRule = firstPath.getAttribute("fill-rule");
+      if (fillRule) merged.setAttribute("fill-rule", fillRule);
+      const clipRule = firstPath.getAttribute("clip-rule");
+      if (clipRule) merged.setAttribute("clip-rule", clipRule);
     }
 
     merged.setAttribute("d", uniqueDs.join(" "));
