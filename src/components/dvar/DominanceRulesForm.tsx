@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useState, useMemo } from "react";
+import { forwardRef, memo, useCallback, useImperativeHandle, useState, useMemo } from "react";
 import { X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +19,7 @@ import {
 import { buildHomeNationPreviewSvg, extractDsvgProvinceShapes } from "@/utils/dvarPreview";
 import { aspectRatioFromViewBox } from "@/utils/svgAspect";
 import { useSvgObjectUrl } from "@/hooks/useSvgObjectUrl";
-import type { DominanceRulesData, HomeNationsData } from "@/types/dvar";
+import type { DominanceRuleEntry, DominanceRulesData, HomeNationsData } from "@/types/dvar";
 import type { DvarAdjacencyMap } from "@/utils/dvarAdjacency";
 
 export interface DominanceRulesFormHandle {
@@ -36,6 +36,176 @@ interface DominanceRulesFormProps {
   defaultValues: DominanceRulesData;
   onSubmit: (data: DominanceRulesData) => void;
 }
+
+// Module-level (not nested in DominanceRulesForm) so its component identity is
+// stable across renders. Declaring this inside the form previously meant React
+// saw a brand-new component type on every render and fully unmounted/remounted
+// every visible Select (province occupier + one per SC condition) — expensive,
+// since Radix Select sets up context/ids/positioning on mount — instead of just
+// updating props on the existing instance.
+function NationSelect({
+  value,
+  onValueChange,
+  nations,
+}: {
+  value: string;
+  onValueChange: (val: string) => void;
+  nations: Array<{ id: string; name: string; color: string }>;
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger size="sm" className="flex-1">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {nations.map(n => (
+          <SelectItem key={n.id} value={n.id}>
+            <span className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: n.color }}
+              />
+              {n.name}
+            </span>
+          </SelectItem>
+        ))}
+        <SelectItem value="neutral">Neutral</SelectItem>
+        <SelectItem value="empty">Empty</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+interface DominanceRuleRowProps {
+  province: { id: string; name: string; supplyCenter: boolean };
+  entry: DominanceRuleEntry | undefined;
+  isHovered: boolean;
+  nations: Array<{ id: string; name: string; color: string }>;
+  allSCs: Array<{ id: string; name: string; supplyCenter: boolean }>;
+  provinceMap: Map<string, { id: string; name: string; supplyCenter: boolean }>;
+  nationColorMap: Map<string, string>;
+  homeNationsData: HomeNationsData;
+  onHoverStart: (id: string) => void;
+  onHoverEnd: () => void;
+  onToggleEnabled: (provinceId: string, enabled: boolean) => void;
+  onSetOccupier: (provinceId: string, value: string) => void;
+  onSetCondition: (provinceId: string, scId: string, value: string) => void;
+  onRemoveCondition: (provinceId: string, scId: string) => void;
+  onOpenAddScDialog: (provinceId: string) => void;
+}
+
+// Memoized so toggling/editing one province — or merely hovering it for the map
+// preview highlight — doesn't force every other row (up to 100+ on a large map)
+// to re-render. React.memo's default shallow prop comparison is enough here:
+// every setter below always produces a *new* entry object for the row it
+// touches (via spread) while leaving every other row's entry reference
+// untouched, so only the actually-changed row (and the two rows whose
+// isHovered flips) re-render.
+const DominanceRuleRow = memo(function DominanceRuleRow({
+  province,
+  entry,
+  isHovered,
+  nations,
+  allSCs,
+  provinceMap,
+  nationColorMap,
+  homeNationsData,
+  onHoverStart,
+  onHoverEnd,
+  onToggleEnabled,
+  onSetOccupier,
+  onSetCondition,
+  onRemoveCondition,
+  onOpenAddScDialog,
+}: DominanceRuleRowProps) {
+  const isEnabled = entry?.enabled ?? false;
+  const conditionSCIds = Object.keys(entry?.conditions ?? {});
+  const availableSCsToAdd = allSCs.filter(sc => !(sc.id in (entry?.conditions ?? {})));
+
+  const getName = (id: string) => provinceMap.get(id)?.name ?? id;
+  const getScColor = (scId: string) => {
+    const nationId = homeNationsData[scId]?.nation;
+    return nationId ? (nationColorMap.get(nationId) ?? "#e2e8f0") : "#e2e8f0";
+  };
+
+  return (
+    <div
+      onMouseEnter={() => onHoverStart(province.id)}
+      onMouseLeave={onHoverEnd}
+      className={cn(
+        "rounded-md border p-2.5 transition-colors",
+        isHovered ? "bg-yellow-50 dark:bg-yellow-950/30" : "hover:bg-muted/30"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id={`dr-${province.id}`}
+          checked={isEnabled}
+          onCheckedChange={checked => onToggleEnabled(province.id, !!checked)}
+        />
+        <label htmlFor={`dr-${province.id}`} className="cursor-pointer text-sm font-medium">
+          {province.name}
+        </label>
+        {!isEnabled && conditionSCIds.length > 0 && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {conditionSCIds.length} SC{conditionSCIds.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {isEnabled && (
+        <div className="ml-6 mt-2 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-24 shrink-0 text-xs text-muted-foreground">province owned by</span>
+            <NationSelect
+              value={entry?.provinceOccupier ?? "empty"}
+              onValueChange={val => onSetOccupier(province.id, val)}
+              nations={nations}
+            />
+          </div>
+
+          {conditionSCIds.length > 0 && <p className="text-xs text-muted-foreground">if:</p>}
+
+          {conditionSCIds.map(scId => (
+            <div key={scId} className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: getScColor(scId) }}
+              />
+              <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
+                {getName(scId)}
+              </span>
+              <NationSelect
+                value={entry?.conditions[scId] ?? "empty"}
+                onValueChange={val => onSetCondition(province.id, scId, val)}
+                nations={nations}
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveCondition(province.id, scId)}
+                className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                aria-label={`Remove ${getName(scId)}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+
+          {availableSCsToAdd.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onOpenAddScDialog(province.id)}
+              className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add SC dependency
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 export const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, DominanceRulesFormProps>(
   ({ svgContent, provinces, nations, homeNationsData, adjacenciesData, defaultValues, onSubmit }, ref) => {
@@ -109,36 +279,40 @@ export const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, Dominance
     );
     const basePreviewUrl = useSvgObjectUrl(basePreviewSvg);
 
-    const getName = (id: string) => provinceMap.get(id)?.name ?? id;
+    // Stable callbacks: every setter below uses the functional setState form
+    // (reading `prev`, not the closed-over `rulesData`) so none of them need
+    // rulesData in their dependency array — their identity stays constant
+    // across renders, which is required for DominanceRuleRow's memoization to
+    // actually skip unrelated rows.
+    const handleHoverStart = useCallback((id: string) => setHoveredId(id), []);
+    const handleHoverEnd = useCallback(() => setHoveredId(null), []);
 
-    const getScColor = (scId: string) => {
-      const nationId = homeNationsData[scId]?.nation;
-      return nationId ? (nationColorMap.get(nationId) ?? "#e2e8f0") : "#e2e8f0";
-    };
+    const setEnabled = useCallback(
+      (provinceId: string, enabled: boolean) => {
+        setRulesData(prev => {
+          const existing = prev[provinceId] ?? { provinceOccupier: "empty", conditions: {} };
+          let conditions = existing.conditions;
+          if (enabled) {
+            const adjacent = borderingSCsPerProvince[provinceId] ?? [];
+            const missing = Object.fromEntries(
+              adjacent.filter(scId => !(scId in conditions)).map(scId => [scId, "empty"])
+            );
+            if (Object.keys(missing).length > 0) conditions = { ...conditions, ...missing };
+          }
+          return { ...prev, [provinceId]: { ...existing, conditions, enabled } };
+        });
+      },
+      [borderingSCsPerProvince]
+    );
 
-    const setEnabled = (provinceId: string, enabled: boolean) => {
-      setRulesData(prev => {
-        const existing = prev[provinceId] ?? { provinceOccupier: "empty", conditions: {} };
-        let conditions = existing.conditions;
-        if (enabled) {
-          const adjacent = borderingSCsPerProvince[provinceId] ?? [];
-          const missing = Object.fromEntries(
-            adjacent.filter(scId => !(scId in conditions)).map(scId => [scId, "empty"])
-          );
-          if (Object.keys(missing).length > 0) conditions = { ...conditions, ...missing };
-        }
-        return { ...prev, [provinceId]: { ...existing, conditions, enabled } };
-      });
-    };
-
-    const setProvinceOccupier = (provinceId: string, value: string) => {
+    const setProvinceOccupier = useCallback((provinceId: string, value: string) => {
       setRulesData(prev => ({
         ...prev,
         [provinceId]: { ...prev[provinceId], provinceOccupier: value },
       }));
-    };
+    }, []);
 
-    const setCondition = (provinceId: string, scId: string, value: string) => {
+    const setCondition = useCallback((provinceId: string, scId: string, value: string) => {
       setRulesData(prev => ({
         ...prev,
         [provinceId]: {
@@ -146,9 +320,9 @@ export const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, Dominance
           conditions: { ...prev[provinceId]?.conditions, [scId]: value },
         },
       }));
-    };
+    }, []);
 
-    const removeCondition = (provinceId: string, scId: string) => {
+    const removeCondition = useCallback((provinceId: string, scId: string) => {
       setRulesData(prev => {
         const entry = prev[provinceId];
         if (!entry) return prev;
@@ -157,9 +331,9 @@ export const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, Dominance
         );
         return { ...prev, [provinceId]: { ...entry, conditions } };
       });
-    };
+    }, []);
 
-    const addCondition = (provinceId: string, scId: string) => {
+    const addCondition = useCallback((provinceId: string, scId: string) => {
       setRulesData(prev => ({
         ...prev,
         [provinceId]: {
@@ -167,36 +341,14 @@ export const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, Dominance
           conditions: { ...(prev[provinceId]?.conditions ?? {}), [scId]: "empty" },
         },
       }));
-    };
+    }, []);
 
-    const NationSelect = ({
-      value,
-      onValueChange,
-    }: {
-      value: string;
-      onValueChange: (val: string) => void;
-    }) => (
-      <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger size="sm" className="flex-1">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {nations.map(n => (
-            <SelectItem key={n.id} value={n.id}>
-              <span className="flex items-center gap-2">
-                <span
-                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: n.color }}
-                />
-                {n.name}
-              </span>
-            </SelectItem>
-          ))}
-          <SelectItem value="neutral">Neutral</SelectItem>
-          <SelectItem value="empty">Empty</SelectItem>
-        </SelectContent>
-      </Select>
-    );
+    const openAddScDialog = useCallback((provinceId: string) => setAddScDialogProvince(provinceId), []);
+
+    const getScColor = (scId: string) => {
+      const nationId = homeNationsData[scId]?.nation;
+      return nationId ? (nationColorMap.get(nationId) ?? "#e2e8f0") : "#e2e8f0";
+    };
 
     return (
       <>
@@ -218,98 +370,26 @@ export const DominanceRulesForm = forwardRef<DominanceRulesFormHandle, Dominance
             {nonScProvinces.length === 0 ? (
               <p className="text-sm text-muted-foreground">No non-SC provinces found.</p>
             ) : (
-              nonScProvinces.map(province => {
-                const entry = rulesData[province.id];
-                const isEnabled = entry?.enabled ?? false;
-                const conditionSCIds = Object.keys(entry?.conditions ?? {});
-                const availableSCsToAdd = allSCs.filter(sc => !(sc.id in (entry?.conditions ?? {})));
-
-                return (
-                  <div
-                    key={province.id}
-                    onMouseEnter={() => setHoveredId(province.id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    className={cn(
-                      "rounded-md border p-2.5 transition-colors",
-                      hoveredId === province.id
-                        ? "bg-yellow-50 dark:bg-yellow-950/30"
-                        : "hover:bg-muted/30"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id={`dr-${province.id}`}
-                        checked={isEnabled}
-                        onCheckedChange={checked => setEnabled(province.id, !!checked)}
-                      />
-                      <label
-                        htmlFor={`dr-${province.id}`}
-                        className="cursor-pointer text-sm font-medium"
-                      >
-                        {province.name}
-                      </label>
-                      {!isEnabled && conditionSCIds.length > 0 && (
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {conditionSCIds.length} SC{conditionSCIds.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-
-                    {isEnabled && (
-                      <div className="ml-6 mt-2 space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="w-24 shrink-0 text-xs text-muted-foreground">
-                            province owned by
-                          </span>
-                          <NationSelect
-                            value={entry?.provinceOccupier ?? "empty"}
-                            onValueChange={val => setProvinceOccupier(province.id, val)}
-                          />
-                        </div>
-
-                        {conditionSCIds.length > 0 && (
-                          <p className="text-xs text-muted-foreground">if:</p>
-                        )}
-
-                        {conditionSCIds.map(scId => (
-                          <div key={scId} className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: getScColor(scId) }}
-                            />
-                            <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
-                              {getName(scId)}
-                            </span>
-                            <NationSelect
-                              value={entry?.conditions[scId] ?? "empty"}
-                              onValueChange={val => setCondition(province.id, scId, val)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeCondition(province.id, scId)}
-                              className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                              aria-label={`Remove ${getName(scId)}`}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-
-                        {availableSCsToAdd.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setAddScDialogProvince(province.id)}
-                            className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add SC dependency
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+              nonScProvinces.map(province => (
+                <DominanceRuleRow
+                  key={province.id}
+                  province={province}
+                  entry={rulesData[province.id]}
+                  isHovered={hoveredId === province.id}
+                  nations={nations}
+                  allSCs={allSCs}
+                  provinceMap={provinceMap}
+                  nationColorMap={nationColorMap}
+                  homeNationsData={homeNationsData}
+                  onHoverStart={handleHoverStart}
+                  onHoverEnd={handleHoverEnd}
+                  onToggleEnabled={setEnabled}
+                  onSetOccupier={setProvinceOccupier}
+                  onSetCondition={setCondition}
+                  onRemoveCondition={removeCondition}
+                  onOpenAddScDialog={openAddScDialog}
+                />
+              ))
             )}
           </div>
 
