@@ -471,3 +471,70 @@ describe("buildDsvgOutput – compound path concatenation", () => {
     expect(merged.getAttribute("clip-rule")).toBe("evenodd");
   });
 });
+
+describe("buildDsvgOutput – text paint-order fix", () => {
+  // Figma exports text with both fill and stroke but never writes paint-order.
+  // SVG's default (fill then stroke) paints the stroke over the fill; when
+  // stroke-width is large relative to font-size — common for embossed map
+  // labels — this hides the fill entirely, even though Figma's own canvas
+  // composites stroke behind fill. buildDsvgOutput must restore that order.
+  function buildWithProvinceNames(namesInner: string): Document {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="container">
+    <g id="bg"><rect width="100" height="100" fill="tan"/></g>
+    <g id="provs"><path id="prov1" d="M0 0 L10 0 L10 10 Z" fill="#C0A080"/></g>
+    <g id="names">${namesInner}</g>
+  </g>
+</svg>`;
+    const output = buildDsvgOutput(svg, {
+      provinces: "root-0-1",
+      namedCoasts: null,
+      unitPositions: null,
+      provinceNames: "root-0-2",
+      borders: null,
+      supplyCenters: null,
+    });
+    return new DOMParser().parseFromString(output, "image/svg+xml");
+  }
+
+  it("adds paint-order:stroke to text with both fill and stroke", () => {
+    const doc = buildWithProvinceNames(
+      `<text id="ERIN" fill="black" fill-opacity="0.41" stroke="#C9B194" stroke-width="10">ERIN</text>`
+    );
+    const style = doc.getElementById("ERIN")?.getAttribute("style");
+    expect(style).toContain("paint-order:stroke");
+  });
+
+  it("leaves fill-only text (no stroke) untouched", () => {
+    const doc = buildWithProvinceNames(`<text id="Conall" fill="black">Conall</text>`);
+    const el = doc.getElementById("Conall")!;
+    expect(el.getAttribute("style")).toBeNull();
+  });
+
+  it("does not treat stroke=\"none\" or fill=\"none\" as needing a fix", () => {
+    const doc = buildWithProvinceNames(`
+      <text id="a" fill="black" stroke="none">a</text>
+      <text id="b" fill="none" stroke="black">b</text>
+    `);
+    expect(doc.getElementById("a")?.getAttribute("style")).toBeNull();
+    expect(doc.getElementById("b")?.getAttribute("style")).toBeNull();
+  });
+
+  it("preserves an existing style attribute instead of overwriting it", () => {
+    const doc = buildWithProvinceNames(
+      `<text id="SEA" fill="black" stroke="#C9B194" style="white-space: pre">SEA</text>`
+    );
+    const style = doc.getElementById("SEA")?.getAttribute("style") ?? "";
+    expect(style).toContain("white-space: pre");
+    expect(style).toContain("paint-order:stroke");
+  });
+
+  it("does not duplicate paint-order if already present", () => {
+    const doc = buildWithProvinceNames(
+      `<text id="SEA" fill="black" stroke="#C9B194" style="paint-order:fill">SEA</text>`
+    );
+    const style = doc.getElementById("SEA")?.getAttribute("style") ?? "";
+    expect(style.match(/paint-order/g)?.length).toBe(1);
+    expect(style).toContain("paint-order:fill");
+  });
+});

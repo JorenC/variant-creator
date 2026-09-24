@@ -273,6 +273,27 @@ function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
   }
 }
 
+// ─── Text stroke/fill paint order ─────────────────────────────────────────────
+
+// Figma exports text layers with both fill and stroke (e.g. bold labels with
+// a thin outline) but never writes paint-order. SVG's default paints fill
+// first and stroke on top, whereas Figma's own canvas composites stroke
+// behind fill. When stroke-width is large relative to font-size — common for
+// these embossed map labels — the opaque stroke fully covers the fill in the
+// default order, making the label look like an empty outline. We restore
+// Figma's stroke-behind-fill order explicitly wherever both are set.
+function fixTextPaintOrder(root: Element): void {
+  for (const text of Array.from(root.querySelectorAll("text"))) {
+    const fill = text.getAttribute("fill");
+    const stroke = text.getAttribute("stroke");
+    if (!fill || fill === "none") continue;
+    if (!stroke || stroke === "none") continue;
+    const style = text.getAttribute("style");
+    if (style && /paint-order\s*:/.test(style)) continue;
+    text.setAttribute("style", style ? `${style};paint-order:stroke` : "paint-order:stroke");
+  }
+}
+
 // ─── Path centre extraction (for unit-position markers) ──────────────────────
 
 // Returns the bounding-box centre and approximate radius of a path element.
@@ -544,6 +565,10 @@ export function buildDsvgOutput(
   // 7. Strip all Inkscape/sodipodi attributes from the whole tree
   stripElement(root);
   stripRootNamespaces(root);
+
+  // 7b. Fix text labels where Figma's implicit stroke-behind-fill order was
+  // lost on export (see fixTextPaintOrder).
+  fixTextPaintOrder(root);
 
   // 8. If the source root declared fill="none", propagate it explicitly to all
   //    drawable elements that lack a fill attribute, so they remain correct when
