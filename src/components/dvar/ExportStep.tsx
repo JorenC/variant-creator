@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { assembleDvar, NEUTRAL_NATION, NEUTRAL_REBUILD_MODIFIER } from "@/utils/dvarAssemble";
+import { assembleDvar, isDominanceRuleComplete, NEUTRAL_NATION, NEUTRAL_REBUILD_MODIFIER } from "@/utils/dvarAssemble";
 import { DvarSchema } from "@/utils/dvarSchema";
 import { validateDvarSemantics } from "@/utils/dvarValidate";
 import type { AssembleDvarInput, ExtraUnit, VictoryCondition } from "@/types/dvar";
@@ -52,7 +52,14 @@ export function ExportStep(props: ExportStepProps) {
   const homeUnitCount = Object.values(homeNationsData).filter(v => v.startingUnit !== null && v.nation && v.nation !== "").length;
   const extraUnitCount = (extraUnits ?? []).filter((eu: ExtraUnit) => eu.province && eu.nation && eu.unit).length;
   const unitCount = homeUnitCount + extraUnitCount;
-  const activeDominanceRules = Object.values(dominanceRulesData).filter(e => e.enabled).length;
+  // isDominanceRuleComplete is the same predicate assembleDvar filters on —
+  // sharing it means this count can never overstate what actually ends up in
+  // the file the way a separately-maintained "enabled" count did before.
+  const activeDominanceRules = Object.values(dominanceRulesData).filter(isDominanceRuleComplete).length;
+  const provinceNameMap = Object.fromEntries(provincesData.provinces.map(p => [p.id, p.name]));
+  const incompleteDominanceRules = Object.entries(dominanceRulesData)
+    .filter(([, e]) => e.enabled && !isDominanceRuleComplete(e))
+    .map(([provinceId]) => provinceNameMap[provinceId] ?? provinceId);
   const nationMap = Object.fromEntries([...nations, NEUTRAL_NATION].map(n => [n.id, n]));
 
   const handleDownload = () => {
@@ -219,6 +226,21 @@ export function ExportStep(props: ExportStepProps) {
         </div>
 
       </div>
+
+      {incompleteDominanceRules.length > 0 && (
+        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+          <div className="flex gap-1.5">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              {incompleteDominanceRules.length} dominance rule{incompleteDominanceRules.length !== 1 ? "s are" : " is"} enabled
+              but {incompleteDominanceRules.length !== 1 ? "have" : "has"} no occupier chosen, so{" "}
+              {incompleteDominanceRules.length !== 1 ? "they" : "it"} will not be saved to the file:{" "}
+              <span className="font-mono">{incompleteDominanceRules.join(", ")}</span>. Go back to Dominance Rules
+              to set a "province owned by" value, or leave the province unchecked to remove the rule.
+            </span>
+          </div>
+        </div>
+      )}
 
       {schemaError && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1.5">
