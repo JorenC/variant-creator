@@ -65,7 +65,10 @@ export function validateDvarSemantics(dvar: DvarOutput): string[] {
     if (!provinceIds.has(rule.province)) {
       errors.push(`Dominance rule references unknown province "${rule.province}".`);
     }
-    if (rule.nation !== "Neutral" && !nationIds.has(rule.nation)) {
+    // "Empty" deliberately assigns no owner (forcing the province to render
+    // unowned even if e.g. all its bordering SCs share one owner) — same
+    // sentinel a dependency can already match on below.
+    if (rule.nation !== "Neutral" && rule.nation !== "Empty" && !nationIds.has(rule.nation)) {
       errors.push(`Dominance rule for "${rule.province}" assigns it to "${rule.nation}", which is not a defined nation.`);
     }
     for (const dep of rule.dependencies) {

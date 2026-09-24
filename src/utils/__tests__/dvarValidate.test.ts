@@ -93,6 +93,17 @@ describe("validateDvarSemantics", () => {
     expect(errors.some(e => e.includes('"neutral"'))).toBe(true);
   });
 
+  // "Empty" as a rule's own nation deliberately forces the province unowned
+  // (see assembleDvar's dominanceRules mapping) — it must be accepted the
+  // same way "Neutral" is, not rejected as an undefined nation.
+  it("accepts Empty as a dominance-rule's own nation", () => {
+    const dvar = baseDvar();
+    dvar.dominanceRules = [
+      { province: "bur", nation: "Empty", dependencies: [] },
+    ];
+    expect(validateDvarSemantics(dvar)).toEqual([]);
+  });
+
   it("rejects named coasts with unknown parents", () => {
     const dvar = baseDvar();
     dvar.namedCoasts = [{ id: "spa/nc", name: "NC", parentProvince: "spa", adjacencies: [] }];

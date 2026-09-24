@@ -117,6 +117,20 @@ describe("applyDominanceRulesImport", () => {
     );
     expect(result.gas).toEqual({ enabled: true, provinceOccupier: "france", conditions: {} });
   });
+
+  // A rule's own occupier of "Empty" is the deliberate "force this province
+  // unowned" choice, distinct from a dependency's "Empty" ("this SC must be
+  // unowned") — the two must map to different form sentinels ("none" vs
+  // "empty") even though the file spells both the same way.
+  it("maps a rule's own \"Empty\" occupier to \"none\", not \"empty\" (unlike a dependency's \"Empty\")", () => {
+    const result = applyDominanceRulesImport(
+      {},
+      [{ province: "gas", nation: "Empty", dependencies: [{ province: "spa", nation: "Empty" }] }],
+      domOwner
+    );
+    expect(result.gas.provinceOccupier).toBe("none");
+    expect(result.gas.conditions).toEqual({ spa: "empty" });
+  });
 });
 
 describe("isDominanceRuleComplete", () => {
@@ -138,6 +152,10 @@ describe("isDominanceRuleComplete", () => {
 
   it("is true for the neutral sentinel", () => {
     expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "neutral", conditions: {} })).toBe(true);
+  });
+
+  it("is true for the forced-empty sentinel \"none\" (distinct from the placeholder \"empty\")", () => {
+    expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "none", conditions: {} })).toBe(true);
   });
 });
 
@@ -581,6 +599,24 @@ describe("assembleDvar – dominance neutral references the neutral power", () =
     const out = assembleDvar(input) as Record<string, unknown>;
     const neutral = (out.nations as Array<{ id: string; non_playable?: boolean }>).find(n => n.id === "neutral");
     expect(neutral?.non_playable).toBe(true);
+  });
+});
+
+describe("assembleDvar – dominance forced-empty occupier", () => {
+  // "none" is the form's distinct "deliberately force this province unowned"
+  // choice (see isDominanceRuleComplete). It must export as the same "Empty"
+  // marker a dependency already uses for "this SC is unowned" — the server
+  // (diplicity-react's compute_province_nations) skips its default
+  // majority-owner coloring for a province whose matched rule's own nation
+  // doesn't resolve to a real nation, which is exactly what "Empty" achieves.
+  it('exports provinceOccupier "none" as nation "Empty", and still counts as a complete rule', () => {
+    const input = baseInput();
+    input.dominanceRulesData = {
+      bur: { enabled: true, provinceOccupier: "none", conditions: {} },
+    };
+    const out = assembleDvar(input) as { dominanceRules?: Array<{ province: string; nation: string }> };
+    expect(out.dominanceRules).toHaveLength(1);
+    expect(out.dominanceRules![0]).toEqual({ province: "bur", nation: "Empty", dependencies: [] });
   });
 });
 
