@@ -3,6 +3,7 @@ import {
   toSlug,
   buildInitialProvinces,
   buildInitialDominanceRules,
+  isDominanceRuleComplete,
   assembleDvar,
   orderTransitionsIntoChain,
   reconcileHomeNationsWithProvinces,
@@ -53,6 +54,28 @@ describe("buildInitialDominanceRules", () => {
     expect(result.gas.enabled).toBe(false);
     expect(result.gas.provinceOccupier).toBe("empty");
     expect(Object.keys(result.gas.conditions).sort()).toEqual(["mar", "spa"]);
+  });
+});
+
+describe("isDominanceRuleComplete", () => {
+  // A province ticked "enabled" in the form still defaults to provinceOccupier
+  // "empty" until the user picks a nation — that combination can't be
+  // exported (there's no "occupied by nobody" state), so it must read as
+  // incomplete despite enabled being true.
+  it("is false when enabled but the occupier is still the default \"empty\"", () => {
+    expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "empty", conditions: {} })).toBe(false);
+  });
+
+  it("is false when disabled, even with a real occupier", () => {
+    expect(isDominanceRuleComplete({ enabled: false, provinceOccupier: "fra", conditions: {} })).toBe(false);
+  });
+
+  it("is true when enabled with a real occupier", () => {
+    expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "fra", conditions: {} })).toBe(true);
+  });
+
+  it("is true for the neutral sentinel", () => {
+    expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "neutral", conditions: {} })).toBe(true);
   });
 });
 
@@ -124,6 +147,16 @@ describe("assembleDvar", () => {
     expect(withOptionals.adjudicationModifiers).toEqual(["allow-builds-in-non-home-centers"]);
     expect((withOptionals.dominanceRules as unknown[]).length).toBe(1);
     expect(withOptionals.unitScaling).toBe(0.8);
+  });
+
+  it("drops an enabled dominance rule left with the default empty occupier", () => {
+    const input = baseInput();
+    input.dominanceRulesData = {
+      gas: { enabled: true, provinceOccupier: "empty", conditions: {} },
+      bur: { enabled: true, provinceOccupier: "fra", conditions: {} },
+    };
+    const out = assembleDvar(input) as { dominanceRules?: Array<{ province: string }> };
+    expect(out.dominanceRules?.map(r => r.province)).toEqual(["bur"]);
   });
 
   it("emits the neutral-rebuild modifier when present, alongside other modifiers", () => {

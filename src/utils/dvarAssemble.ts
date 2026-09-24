@@ -8,6 +8,7 @@ import type { ParsedDsvg } from "@/utils/parseDsvg";
 import type { DvarAdjacencyMap } from "@/utils/dvarAdjacency";
 import type {
   AssembleDvarInput,
+  DominanceRuleEntry,
   DominanceRulesData,
   ExtraUnit,
   HomeNationsData,
@@ -152,6 +153,18 @@ export function reconcileHomeNationsWithProvinces(
 }
 
 /**
+ * A dominance rule is only meaningful — and only gets written to the exported
+ * `.dvar` — once the user has actually picked an occupier; a province merely
+ * ticked "enabled" still defaults to provinceOccupier "empty", which can't be
+ * exported (there's no "occupied by nobody in particular" state to encode).
+ * Exported so callers that report a rule count (e.g. the export step's
+ * summary) can't drift from assembleDvar's own filter below.
+ */
+export function isDominanceRuleComplete(entry: DominanceRuleEntry): boolean {
+  return entry.enabled && !!entry.provinceOccupier && entry.provinceOccupier !== "empty";
+}
+
+/**
  * Seeds a dominance-rule entry for every non-SC province, pre-listing the supply
  * centers it borders as (initially "empty") conditions.
  */
@@ -273,7 +286,7 @@ export function assembleDvar({
   });
 
   const dominanceRules = Object.entries(dominanceRulesData)
-    .filter(([, e]) => e.enabled && e.provinceOccupier && e.provinceOccupier !== "empty")
+    .filter(([, e]) => isDominanceRuleComplete(e))
     .map(([provinceId, e]) => ({
       province: provinceId,
       // "neutral" is the form's internal sentinel for the non-playable neutral
