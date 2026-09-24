@@ -188,6 +188,39 @@ export function buildInitialDominanceRules(
   return result;
 }
 
+/**
+ * Overlays dominance rules imported from a `.dvar` file onto the auto-detected
+ * base structure from {@link buildInitialDominanceRules}.
+ *
+ * For a province an imported rule covers, `conditions` is built *entirely*
+ * from that rule's own dependencies — never merged with the base structure's
+ * pre-seeded bordering-SC defaults. Merging would leave every bordering SC
+ * the file's author deliberately left out of the rule still sitting in
+ * `conditions` (defaulted to "empty"), which then silently re-appears as a
+ * real, unintended condition on the next export — e.g. a rule the author
+ * wrote as "only if Minsk is Belorussian" would round-trip as "only if
+ * Minsk is Belorussian AND Warsaw is empty AND Vilnius is empty", changing
+ * when the rule actually applies.
+ *
+ * `domOwner` maps the file's nation strings back to the form's sentinels
+ * ("Empty" -> "empty", the neutral power -> "neutral").
+ */
+export function applyDominanceRulesImport(
+  baseDR: DominanceRulesData,
+  rules: Array<{ province: string; nation: string; dependencies: Array<{ province: string; nation: string }> }>,
+  domOwner: (nation: string) => string
+): DominanceRulesData {
+  const result = { ...baseDR };
+  for (const rule of rules) {
+    result[rule.province] = {
+      enabled: true,
+      provinceOccupier: domOwner(rule.nation),
+      conditions: Object.fromEntries(rule.dependencies.map(dep => [dep.province, domOwner(dep.nation)])),
+    };
+  }
+  return result;
+}
+
 /** Builds the initial province rows (sorted, named after their IDs, type unset) from a dSVG. */
 export function buildInitialProvinces(dsvg: ParsedDsvg): ProvincesFormValues["provinces"] {
   const coastsByParent = new Map<string, string[]>();

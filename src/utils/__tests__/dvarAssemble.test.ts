@@ -3,6 +3,7 @@ import {
   toSlug,
   buildInitialProvinces,
   buildInitialDominanceRules,
+  applyDominanceRulesImport,
   isDominanceRuleComplete,
   assembleDvar,
   orderTransitionsIntoChain,
@@ -54,6 +55,67 @@ describe("buildInitialDominanceRules", () => {
     expect(result.gas.enabled).toBe(false);
     expect(result.gas.provinceOccupier).toBe("empty");
     expect(Object.keys(result.gas.conditions).sort()).toEqual(["mar", "spa"]);
+  });
+});
+
+describe("applyDominanceRulesImport", () => {
+  const domOwner = (n: string) => (n === "Empty" ? "empty" : n === "Neutral" ? "neutral" : n);
+
+  // Gascony borders three SCs (Spain, Marseilles, Paris) via
+  // buildInitialDominanceRules's pre-seeded defaults, but the imported rule
+  // only conditions on Spain — the map author deliberately left the other two
+  // out. Regression test for the bug where Marseilles/Paris survived from the
+  // pre-seeded defaults and silently became real "empty" conditions.
+  it("replaces the pre-seeded bordering-SC defaults instead of merging into them", () => {
+    const baseDR = buildInitialDominanceRules(
+      { gas: [{ to: "spa", pass: "army" }, { to: "mar", pass: "army" }, { to: "par", pass: "army" }] },
+      [
+        { id: "gas", supplyCenter: false },
+        { id: "spa", supplyCenter: true },
+        { id: "mar", supplyCenter: true },
+        { id: "par", supplyCenter: true },
+      ]
+    );
+    expect(Object.keys(baseDR.gas.conditions).sort()).toEqual(["mar", "par", "spa"]); // sanity: all 3 pre-seeded
+
+    const result = applyDominanceRulesImport(
+      baseDR,
+      [{ province: "gas", nation: "france", dependencies: [{ province: "spa", nation: "Empty" }] }],
+      domOwner
+    );
+
+    expect(result.gas.enabled).toBe(true);
+    expect(result.gas.provinceOccupier).toBe("france");
+    expect(result.gas.conditions).toEqual({ spa: "empty" }); // mar/par must NOT survive
+  });
+
+  it("leaves provinces the import doesn't cover at their pre-seeded default", () => {
+    const baseDR = buildInitialDominanceRules(
+      { gas: [{ to: "spa", pass: "army" }] },
+      [{ id: "gas", supplyCenter: false }, { id: "spa", supplyCenter: true }]
+    );
+    const result = applyDominanceRulesImport(baseDR, [], domOwner);
+    expect(result.gas).toEqual(baseDR.gas);
+  });
+
+  it("maps the neutral sentinel and Empty through domOwner for both occupier and dependencies", () => {
+    const baseDR = buildInitialDominanceRules({}, [{ id: "gas", supplyCenter: false }]);
+    const result = applyDominanceRulesImport(
+      baseDR,
+      [{ province: "gas", nation: "Neutral", dependencies: [{ province: "spa", nation: "Empty" }] }],
+      domOwner
+    );
+    expect(result.gas.provinceOccupier).toBe("neutral");
+    expect(result.gas.conditions).toEqual({ spa: "empty" });
+  });
+
+  it("adds an entry for a rule whose province has no pre-seeded default", () => {
+    const result = applyDominanceRulesImport(
+      {},
+      [{ province: "gas", nation: "france", dependencies: [] }],
+      domOwner
+    );
+    expect(result.gas).toEqual({ enabled: true, provinceOccupier: "france", conditions: {} });
   });
 });
 
