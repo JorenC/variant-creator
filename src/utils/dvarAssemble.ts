@@ -154,9 +154,12 @@ export function reconcileHomeNationsWithProvinces(
 
 /**
  * A dominance rule is only meaningful — and only gets written to the exported
- * `.dvar` — once the user has actually picked an occupier; a province merely
- * ticked "enabled" still defaults to provinceOccupier "empty", which can't be
- * exported (there's no "occupied by nobody in particular" state to encode).
+ * `.dvar` — once the user has actually picked an occupier. Ticking "enabled"
+ * alone still defaults provinceOccupier to "empty" (the form's placeholder,
+ * rendered as "-"), which encodes nothing and must not be exported.
+ * "none" is a distinct, deliberate choice — "force this province unowned,
+ * even if e.g. all its bordering SCs share one owner" — and is exportable
+ * (see assembleDvar's dominanceRules mapping below).
  * Exported so callers that report a rule count (e.g. the export step's
  * summary) can't drift from assembleDvar's own filter below.
  */
@@ -183,6 +186,44 @@ export function buildInitialDominanceRules(
       enabled: false,
       provinceOccupier: "empty",
       conditions: Object.fromEntries(scIds.map(scId => [scId, "empty"])),
+    };
+  }
+  return result;
+}
+
+/**
+ * Overlays dominance rules imported from a `.dvar` file onto the auto-detected
+ * base structure from {@link buildInitialDominanceRules}.
+ *
+ * For a province an imported rule covers, `conditions` is built *entirely*
+ * from that rule's own dependencies — never merged with the base structure's
+ * pre-seeded bordering-SC defaults. Merging would leave every bordering SC
+ * the file's author deliberately left out of the rule still sitting in
+ * `conditions` (defaulted to "empty"), which then silently re-appears as a
+ * real, unintended condition on the next export — e.g. a rule the author
+ * wrote as "only if Minsk is Belorussian" would round-trip as "only if
+ * Minsk is Belorussian AND Warsaw is empty AND Vilnius is empty", changing
+ * when the rule actually applies.
+ *
+ * `domOwner` maps the file's nation strings back to the form's sentinels for
+ * *dependencies* ("Empty" -> "empty", the neutral power -> "neutral"). A
+ * rule's own occupier maps "Empty" to the distinct "none" sentinel instead
+ * (see isDominanceRuleComplete) — on a dependency "Empty" just means "this SC
+ * must be unowned," but as the rule's own occupier it's a deliberate,
+ * complete choice ("force this province unowned"), not the form's
+ * not-yet-chosen placeholder, which also happens to be called "empty."
+ */
+export function applyDominanceRulesImport(
+  baseDR: DominanceRulesData,
+  rules: Array<{ province: string; nation: string; dependencies: Array<{ province: string; nation: string }> }>,
+  domOwner: (nation: string) => string
+): DominanceRulesData {
+  const result = { ...baseDR };
+  for (const rule of rules) {
+    result[rule.province] = {
+      enabled: true,
+      provinceOccupier: rule.nation === "Empty" ? "none" : domOwner(rule.nation),
+      conditions: Object.fromEntries(rule.dependencies.map(dep => [dep.province, domOwner(dep.nation)])),
     };
   }
   return result;
@@ -291,8 +332,11 @@ export function assembleDvar({
       province: provinceId,
       // "neutral" is the form's internal sentinel for the non-playable neutral
       // power; emit its nation id so the server resolves it to that power (and
-      // colours the province accordingly). "empty" stays the unowned marker.
-      nation: e.provinceOccupier === "neutral" ? NEUTRAL_NATION.id : e.provinceOccupier,
+      // colours the province accordingly). "none" deliberately forces the
+      // province unowned (the server skips its default majority-owner
+      // coloring when a rule's own nation doesn't resolve to a real nation) —
+      // emit the same "Empty" marker a dependency uses for the same idea.
+      nation: e.provinceOccupier === "neutral" ? NEUTRAL_NATION.id : e.provinceOccupier === "none" ? "Empty" : e.provinceOccupier,
       dependencies: Object.entries(e.conditions)
         .map(([depProvince, nation]) => ({
           province: depProvince,

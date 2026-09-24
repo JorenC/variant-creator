@@ -20,6 +20,7 @@ import { computeMismatches, applyIdRemapping, collectPreFillWarnings } from "@/u
 import {
   buildInitialProvinces,
   buildInitialDominanceRules,
+  applyDominanceRulesImport,
   assemblePartialDvar,
   orderTransitionsIntoChain,
   reconcileHomeNationsWithProvinces,
@@ -229,25 +230,19 @@ export function DvarCreator() {
     setHomeNationsData(homeNations);
     setExtraUnitsData(extraUnits.length > 0 ? extraUnits : null);
 
-    // dominance rules: start from the auto-detected structure, then overlay enabled rules.
+    // dominance rules: start from the auto-detected structure (every non-SC
+    // province pre-seeded with its bordering SCs as conditions, so the form
+    // has something to show if the user enables a rule that wasn't in the
+    // file), then overlay imported rules on top — see applyDominanceRulesImport
+    // for why that overlay must replace each covered province's conditions
+    // rather than merge into the pre-seeded defaults.
     // Map file owners back to the form's sentinels: the neutral power (capital
     // "Neutral" sentinel or any non-playable nation id) becomes "neutral", and
     // the unowned marker "Empty" becomes "empty".
     const domOwner = (n: string) =>
       n === "Empty" ? "empty" : n === "Neutral" || nonPlayableIds.has(n) ? "neutral" : n;
     const baseDR = buildInitialDominanceRules(adjacencyMap, provinces);
-    for (const rule of dvar.dominanceRules ?? []) {
-      if (!baseDR[rule.province]) {
-        baseDR[rule.province] = { enabled: true, provinceOccupier: domOwner(rule.nation), conditions: {} };
-      } else {
-        baseDR[rule.province].enabled = true;
-        baseDR[rule.province].provinceOccupier = domOwner(rule.nation);
-      }
-      for (const dep of rule.dependencies) {
-        baseDR[rule.province].conditions[dep.province] = domOwner(dep.nation);
-      }
-    }
-    setDominanceRulesData(baseDR);
+    setDominanceRulesData(applyDominanceRulesImport(baseDR, dvar.dominanceRules ?? [], domOwner));
 
     // phase progression: each entry[i] = { from.season, from.type, to.yearDelta }.
     // The wizard re-links entries in list order on export, so order the

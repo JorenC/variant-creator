@@ -3,6 +3,7 @@ import {
   toSlug,
   buildInitialProvinces,
   buildInitialDominanceRules,
+  applyDominanceRulesImport,
   isDominanceRuleComplete,
   assembleDvar,
   orderTransitionsIntoChain,
@@ -57,6 +58,81 @@ describe("buildInitialDominanceRules", () => {
   });
 });
 
+describe("applyDominanceRulesImport", () => {
+  const domOwner = (n: string) => (n === "Empty" ? "empty" : n === "Neutral" ? "neutral" : n);
+
+  // Gascony borders three SCs (Spain, Marseilles, Paris) via
+  // buildInitialDominanceRules's pre-seeded defaults, but the imported rule
+  // only conditions on Spain — the map author deliberately left the other two
+  // out. Regression test for the bug where Marseilles/Paris survived from the
+  // pre-seeded defaults and silently became real "empty" conditions.
+  it("replaces the pre-seeded bordering-SC defaults instead of merging into them", () => {
+    const baseDR = buildInitialDominanceRules(
+      { gas: [{ to: "spa", pass: "army" }, { to: "mar", pass: "army" }, { to: "par", pass: "army" }] },
+      [
+        { id: "gas", supplyCenter: false },
+        { id: "spa", supplyCenter: true },
+        { id: "mar", supplyCenter: true },
+        { id: "par", supplyCenter: true },
+      ]
+    );
+    expect(Object.keys(baseDR.gas.conditions).sort()).toEqual(["mar", "par", "spa"]); // sanity: all 3 pre-seeded
+
+    const result = applyDominanceRulesImport(
+      baseDR,
+      [{ province: "gas", nation: "france", dependencies: [{ province: "spa", nation: "Empty" }] }],
+      domOwner
+    );
+
+    expect(result.gas.enabled).toBe(true);
+    expect(result.gas.provinceOccupier).toBe("france");
+    expect(result.gas.conditions).toEqual({ spa: "empty" }); // mar/par must NOT survive
+  });
+
+  it("leaves provinces the import doesn't cover at their pre-seeded default", () => {
+    const baseDR = buildInitialDominanceRules(
+      { gas: [{ to: "spa", pass: "army" }] },
+      [{ id: "gas", supplyCenter: false }, { id: "spa", supplyCenter: true }]
+    );
+    const result = applyDominanceRulesImport(baseDR, [], domOwner);
+    expect(result.gas).toEqual(baseDR.gas);
+  });
+
+  it("maps the neutral sentinel and Empty through domOwner for both occupier and dependencies", () => {
+    const baseDR = buildInitialDominanceRules({}, [{ id: "gas", supplyCenter: false }]);
+    const result = applyDominanceRulesImport(
+      baseDR,
+      [{ province: "gas", nation: "Neutral", dependencies: [{ province: "spa", nation: "Empty" }] }],
+      domOwner
+    );
+    expect(result.gas.provinceOccupier).toBe("neutral");
+    expect(result.gas.conditions).toEqual({ spa: "empty" });
+  });
+
+  it("adds an entry for a rule whose province has no pre-seeded default", () => {
+    const result = applyDominanceRulesImport(
+      {},
+      [{ province: "gas", nation: "france", dependencies: [] }],
+      domOwner
+    );
+    expect(result.gas).toEqual({ enabled: true, provinceOccupier: "france", conditions: {} });
+  });
+
+  // A rule's own occupier of "Empty" is the deliberate "force this province
+  // unowned" choice, distinct from a dependency's "Empty" ("this SC must be
+  // unowned") — the two must map to different form sentinels ("none" vs
+  // "empty") even though the file spells both the same way.
+  it("maps a rule's own \"Empty\" occupier to \"none\", not \"empty\" (unlike a dependency's \"Empty\")", () => {
+    const result = applyDominanceRulesImport(
+      {},
+      [{ province: "gas", nation: "Empty", dependencies: [{ province: "spa", nation: "Empty" }] }],
+      domOwner
+    );
+    expect(result.gas.provinceOccupier).toBe("none");
+    expect(result.gas.conditions).toEqual({ spa: "empty" });
+  });
+});
+
 describe("isDominanceRuleComplete", () => {
   // A province ticked "enabled" in the form still defaults to provinceOccupier
   // "empty" until the user picks a nation — that combination can't be
@@ -76,6 +152,10 @@ describe("isDominanceRuleComplete", () => {
 
   it("is true for the neutral sentinel", () => {
     expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "neutral", conditions: {} })).toBe(true);
+  });
+
+  it("is true for the forced-empty sentinel \"none\" (distinct from the placeholder \"empty\")", () => {
+    expect(isDominanceRuleComplete({ enabled: true, provinceOccupier: "none", conditions: {} })).toBe(true);
   });
 });
 
@@ -519,6 +599,24 @@ describe("assembleDvar – dominance neutral references the neutral power", () =
     const out = assembleDvar(input) as Record<string, unknown>;
     const neutral = (out.nations as Array<{ id: string; non_playable?: boolean }>).find(n => n.id === "neutral");
     expect(neutral?.non_playable).toBe(true);
+  });
+});
+
+describe("assembleDvar – dominance forced-empty occupier", () => {
+  // "none" is the form's distinct "deliberately force this province unowned"
+  // choice (see isDominanceRuleComplete). It must export as the same "Empty"
+  // marker a dependency already uses for "this SC is unowned" — the server
+  // (diplicity-react's compute_province_nations) skips its default
+  // majority-owner coloring for a province whose matched rule's own nation
+  // doesn't resolve to a real nation, which is exactly what "Empty" achieves.
+  it('exports provinceOccupier "none" as nation "Empty", and still counts as a complete rule', () => {
+    const input = baseInput();
+    input.dominanceRulesData = {
+      bur: { enabled: true, provinceOccupier: "none", conditions: {} },
+    };
+    const out = assembleDvar(input) as { dominanceRules?: Array<{ province: string; nation: string }> };
+    expect(out.dominanceRules).toHaveLength(1);
+    expect(out.dominanceRules![0]).toEqual({ province: "bur", nation: "Empty", dependencies: [] });
   });
 });
 

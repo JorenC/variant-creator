@@ -47,10 +47,17 @@ function NationSelect({
   value,
   onValueChange,
   nations,
+  allowForcedEmpty = false,
 }: {
   value: string;
   onValueChange: (val: string) => void;
   nations: Array<{ id: string; name: string; color: string }>;
+  // Only the province-occupier select offers this — "force this province
+  // unowned" is a property of the province's own coloring, not of a single SC
+  // condition. See isDominanceRuleComplete / assembleDvar's dominanceRules
+  // mapping for why "none" is a distinct, exportable choice from the
+  // placeholder "empty" ("-") below.
+  allowForcedEmpty?: boolean;
 }) {
   return (
     <Select value={value} onValueChange={onValueChange}>
@@ -70,7 +77,8 @@ function NationSelect({
           </SelectItem>
         ))}
         <SelectItem value="neutral">Neutral</SelectItem>
-        <SelectItem value="empty">Empty</SelectItem>
+        {allowForcedEmpty && <SelectItem value="none">Empty (forced)</SelectItem>}
+        <SelectItem value="empty">-</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -161,6 +169,7 @@ const DominanceRuleRow = memo(function DominanceRuleRow({
               value={entry?.provinceOccupier ?? "empty"}
               onValueChange={val => onSetOccupier(province.id, val)}
               nations={nations}
+              allowForcedEmpty
             />
           </div>
 
