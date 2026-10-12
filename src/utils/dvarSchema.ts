@@ -56,6 +56,7 @@ const VictoryCondition = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("supply-center-majority"),
     supplyCenters: z.number().int().min(1),
+    nation: z.string().optional(),
   }),
   z.object({
     type: z.literal("timed-resolution"),

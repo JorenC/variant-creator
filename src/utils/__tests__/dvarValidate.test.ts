@@ -136,4 +136,34 @@ describe("validateDvarSemantics", () => {
     expect(errors.some(e => e.includes('Duplicate province id "par"'))).toBe(true);
     expect(errors.some(e => e.includes('Duplicate nation id "fra"'))).toBe(true);
   });
+
+  it("accepts a default supply center target with per-nation overrides", () => {
+    const dvar = baseDvar();
+    dvar.victoryConditions.push({ type: "supply-center-majority", supplyCenters: 1, nation: "fra" });
+    expect(validateDvarSemantics(dvar)).toEqual([]);
+  });
+
+  it("rejects duplicate supply center defaults and overrides", () => {
+    const dvar = baseDvar();
+    dvar.victoryConditions.push(
+      { type: "supply-center-majority", supplyCenters: 3 },
+      { type: "supply-center-majority", supplyCenters: 1, nation: "fra" },
+      { type: "supply-center-majority", supplyCenters: 2, nation: "fra" },
+    );
+    const errors = validateDvarSemantics(dvar);
+    expect(errors.some(e => e.includes("Only one default supply center"))).toBe(true);
+    expect(errors.some(e => e.includes('"fra" has more than one'))).toBe(true);
+  });
+
+  it("rejects supply center overrides for unknown or non-playable nations", () => {
+    const dvar = baseDvar();
+    dvar.nations.push({ id: "neutral", name: "Neutral", color: "#888888", non_playable: true });
+    dvar.victoryConditions.push(
+      { type: "supply-center-majority", supplyCenters: 1, nation: "rus" },
+      { type: "supply-center-majority", supplyCenters: 1, nation: "neutral" },
+    );
+    const errors = validateDvarSemantics(dvar);
+    expect(errors.some(e => e.includes('"rus", which is not a playable nation'))).toBe(true);
+    expect(errors.some(e => e.includes('"neutral", which is not a playable nation'))).toBe(true);
+  });
 });

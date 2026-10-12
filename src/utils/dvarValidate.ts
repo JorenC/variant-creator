@@ -80,7 +80,24 @@ export function validateDvarSemantics(dvar: DvarOutput): string[] {
       }
     }
   }
+  const playableNationIds = new Set(dvar.nations.filter(n => !n.non_playable).map(n => n.id));
+  let hasDefaultScTarget = false;
+  const nationsWithScTarget = new Set<string>();
   for (const vc of dvar.victoryConditions) {
+    if (vc.type === "supply-center-majority") {
+      if (vc.nation === undefined) {
+        if (hasDefaultScTarget) errors.push("Only one default supply center victory condition is allowed.");
+        hasDefaultScTarget = true;
+      } else {
+        if (!playableNationIds.has(vc.nation)) {
+          errors.push(`Supply center victory condition targets "${vc.nation}", which is not a playable nation.`);
+        }
+        if (nationsWithScTarget.has(vc.nation)) {
+          errors.push(`Nation "${vc.nation}" has more than one supply center victory target.`);
+        }
+        nationsWithScTarget.add(vc.nation);
+      }
+    }
     if (vc.type === "province-control") {
       for (const id of vc.provinces) {
         if (!provinceIds.has(id)) {

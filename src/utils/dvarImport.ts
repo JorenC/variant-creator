@@ -136,13 +136,23 @@ export function sanitizeDvarImport(raw: unknown): SanitizedDvarImport | null {
     return [];
   });
 
+  const playableNationIds = new Set(nations.filter(n => !n.non_playable).map(n => n.id));
   const victoryConditions = arr(raw.victoryConditions).flatMap(entry => {
     if (!isRecord(entry) || typeof entry.type !== "string") {
       dropped.push("victoryConditions: malformed entry dropped");
       return [];
     }
     if (entry.type === "supply-center-majority" && num(entry.supplyCenters) !== undefined) {
-      return [{ type: "supply-center-majority", supplyCenters: num(entry.supplyCenters)! } as VictoryCondition];
+      const nation = str(entry.nation);
+      if (nation !== undefined && !playableNationIds.has(nation)) {
+        dropped.push(`victoryConditions: supply center target for unknown nation "${nation}" dropped`);
+        return [];
+      }
+      return [{
+        type: "supply-center-majority",
+        supplyCenters: num(entry.supplyCenters)!,
+        ...(nation !== undefined ? { nation } : {}),
+      } as VictoryCondition];
     }
     if (
       entry.type === "timed-resolution" &&
