@@ -73,7 +73,7 @@ export type VictoryConditionType =
   | "province-control";
 
 export type VictoryCondition =
-  | { type: "supply-center-majority"; supplyCenters: number }
+  | { type: "supply-center-majority"; supplyCenters: number; nation?: string }
   | { type: "timed-resolution"; year: number; resolution: "most-supply-centers" | "shared-draw" }
   | { type: "province-control"; provinces: string[]; year?: number };
 

@@ -19,15 +19,50 @@ export interface VictoryConditionsFormHandle {
 }
 
 interface VictoryConditionsFormProps {
+  nations: Array<{ id: string; name: string }>;
   provinces: Array<{ id: string; name: string }>;
   defaultValues: VictoryConditionsData;
   onSubmit: (data: VictoryConditionsData) => void;
 }
 
 export const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, VictoryConditionsFormProps>(
-  ({ provinces, defaultValues, onSubmit }, ref) => {
-    const [conditions, setConditions] = useState<VictoryConditionsData>(defaultValues);
+  ({ nations, provinces, defaultValues, onSubmit }, ref) => {
+    const isOverride = (c: VictoryCondition) => c.type === "supply-center-majority" && c.nation !== undefined;
+    const [conditions, setConditions] = useState<VictoryConditionsData>(() =>
+      defaultValues.filter(c => !isOverride(c))
+    );
+    const [scOverrides, setScOverrides] = useState<Record<string, number>>(() =>
+      Object.fromEntries(
+        defaultValues.flatMap(c =>
+          c.type === "supply-center-majority" && c.nation !== undefined ? [[c.nation, c.supplyCenters]] : []
+        )
+      )
+    );
+    const [perNation, setPerNation] = useState(() => defaultValues.some(isOverride));
     const [errorIndices, setErrorIndices] = useState<Set<number>>(new Set());
+
+    const defaultScIndex = conditions.findIndex(c => c.type === "supply-center-majority");
+
+    // Overrides are written straight after the default they refine. Iterating
+    // `nations` drops overrides for nations removed in an earlier step.
+    const collect = (): VictoryConditionsData => {
+      if (!perNation || defaultScIndex === -1) return conditions;
+      const overrides = nations.flatMap(n =>
+        scOverrides[n.id] !== undefined
+          ? [{ type: "supply-center-majority" as const, supplyCenters: scOverrides[n.id], nation: n.id }]
+          : []
+      );
+      return [...conditions.slice(0, defaultScIndex + 1), ...overrides, ...conditions.slice(defaultScIndex + 1)];
+    };
+
+    const setScOverride = (nationId: string, value: string) => {
+      setScOverrides(prev => {
+        const next = { ...prev };
+        if (value === "") delete next[nationId];
+        else next[nationId] = Math.max(1, parseInt(value) || 1);
+        return next;
+      });
+    };
 
     useImperativeHandle(ref, () => ({
       submit: () => {
@@ -40,9 +75,9 @@ export const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, Vic
           return;
         }
         setErrorIndices(new Set());
-        onSubmit(conditions);
+        onSubmit(collect());
       },
-      getValues: () => conditions,
+      getValues: collect,
     }));
 
     const addCondition = () => {
@@ -109,17 +144,48 @@ export const VictoryConditionsForm = forwardRef<VictoryConditionsFormHandle, Vic
             </div>
 
             {condition.type === "supply-center-majority" && (
-              <div className="flex items-center gap-3">
-                <Label className="text-sm shrink-0">Supply centers to win</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={condition.supplyCenters}
-                  onChange={e =>
-                    updateCondition(index, { supplyCenters: Math.max(1, parseInt(e.target.value) || 1) })
-                  }
-                  className="h-7 w-20 text-sm"
-                />
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Label className="text-sm shrink-0">Supply centers to win</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={condition.supplyCenters}
+                    onChange={e =>
+                      updateCondition(index, { supplyCenters: Math.max(1, parseInt(e.target.value) || 1) })
+                    }
+                    className="h-7 w-20 text-sm"
+                  />
+                </div>
+                {index === defaultScIndex && (
+                  <>
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <Checkbox checked={perNation} onCheckedChange={checked => setPerNation(checked === true)} />
+                      <span className="text-sm">Different targets per nation</span>
+                    </label>
+                    {perNation && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          Leave a nation empty to use the default of {condition.supplyCenters}.
+                        </p>
+                        {nations.map(n => (
+                          <div key={n.id} className="flex items-center gap-3">
+                            <Label htmlFor={`sc-target-${n.id}`} className="flex-1 text-sm">{n.name}</Label>
+                            <Input
+                              id={`sc-target-${n.id}`}
+                              type="number"
+                              min={1}
+                              value={scOverrides[n.id] ?? ""}
+                              placeholder={String(condition.supplyCenters)}
+                              onChange={e => setScOverride(n.id, e.target.value)}
+                              className="h-7 w-20 text-sm"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

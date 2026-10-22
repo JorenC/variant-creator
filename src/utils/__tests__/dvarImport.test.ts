@@ -67,6 +67,29 @@ describe("sanitizeDvarImport", () => {
     expect(result.dropped.some(d => d.includes("mystery-mode"))).toBe(true);
   });
 
+  it("keeps per-nation supply center targets and drops ones for unknown nations", () => {
+    const result = sanitizeDvarImport({
+      nations: [
+        { id: "eng", name: "England", color: "#0000FF" },
+        { id: "neutral", name: "Neutral", color: "#888888", non_playable: true },
+      ],
+      victoryConditions: [
+        { type: "supply-center-majority", supplyCenters: 18 },
+        { type: "supply-center-majority", supplyCenters: 15, nation: "eng" },
+        { type: "supply-center-majority", supplyCenters: 20, nation: "rus" },
+        { type: "supply-center-majority", supplyCenters: 10, nation: "neutral" },
+      ],
+    })!;
+    expect(result.dvar.victoryConditions).toEqual([
+      { type: "supply-center-majority", supplyCenters: 18 },
+      { type: "supply-center-majority", supplyCenters: 15, nation: "eng" },
+    ]);
+    expect(result.dropped).toEqual([
+      'victoryConditions: supply center target for unknown nation "rus" dropped',
+      'victoryConditions: supply center target for unknown nation "neutral" dropped',
+    ]);
+  });
+
   it("passes through a valid unitScaling and drops an out-of-range one", () => {
     expect(sanitizeDvarImport({ unitScaling: 0.8 })!.dvar.unitScaling).toBe(0.8);
     expect(sanitizeDvarImport({ unitScaling: 15 })!.dvar.unitScaling).toBeUndefined();

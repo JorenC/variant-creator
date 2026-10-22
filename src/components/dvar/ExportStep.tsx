@@ -96,7 +96,11 @@ export function ExportStep(props: ExportStepProps) {
   };
 
   const vcLabel = (vc: VictoryCondition): string => {
-    if (vc.type === "supply-center-majority") return `Solo at ${vc.supplyCenters} supply centers`;
+    if (vc.type === "supply-center-majority") {
+      if (vc.nation === undefined) return `Solo at ${vc.supplyCenters} supply centers`;
+      const nationName = nations.find(n => n.id === vc.nation)?.name ?? vc.nation;
+      return `${nationName}: solo at ${vc.supplyCenters} supply centers`;
+    }
     if (vc.type === "timed-resolution")
       return `End at ${vc.year} — ${vc.resolution === "most-supply-centers" ? "most SCs wins" : "shared draw"}`;
     const ps = vc.provinces.join(", ");

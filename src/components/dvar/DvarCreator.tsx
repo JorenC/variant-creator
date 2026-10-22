@@ -995,6 +995,7 @@ export function DvarCreator() {
             {step === "victory-conditions" && victoryConditionsData && (
               <VictoryConditionsForm
                 ref={victoryConditionsRef}
+                nations={nations ?? []}
                 provinces={provincesData?.provinces ?? []}
                 defaultValues={victoryConditionsData}
                 onSubmit={handleVictoryConditionsSubmit}
