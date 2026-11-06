@@ -538,3 +538,39 @@ describe("buildDsvgOutput – text paint-order fix", () => {
     expect(style).toContain("paint-order:fill");
   });
 });
+
+describe("buildDsvgOutput – named coast groups drawn with <use> references", () => {
+  it("turns a group whose shapes are <use> references into a path with the group id", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100">
+  <defs>
+    <path id="stroke0" d="M0 0 L10 0 L10 10 Z"/>
+    <path id="stroke1" d="M50 50 L60 50 L60 60 Z"/>
+  </defs>
+  <g id="container">
+    <g id="bg"></g>
+    <g id="provs"><path id="mxc" d="M0 0 L10 0 L10 10 Z"/></g>
+    <g id="fg"></g>
+    <g id="nc">
+      <g id="mxc/wc">
+        <use xlink:href="#stroke0" fill="#D9D9D9"/>
+        <use xlink:href="#stroke0" fill="#D9D9D9"/>
+        <use xlink:href="#stroke1" fill="#D9D9D9"/>
+      </g>
+    </g>
+  </g>
+</svg>`;
+    const output = buildDsvgOutput(svg, {
+      provinces: "root-1-1",
+      namedCoasts: "root-1-3",
+      unitPositions: null,
+      provinceNames: null,
+      borders: null,
+      supplyCenters: null,
+    });
+    const doc = parseOutput(output);
+    const coast = doc.getElementById("mxc/wc");
+    expect(coast?.tagName.toLowerCase()).toBe("path");
+    expect(coast?.getAttribute("d")).toBe("M 0 0 L 10 0 L 10 10 Z M 50 50 L 60 50 L 60 60 Z");
+    expect(coast?.getAttribute("fill")).toBe("#D9D9D9");
+  });
+});
