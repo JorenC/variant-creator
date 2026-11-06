@@ -229,13 +229,34 @@ function convertShapesToPaths(doc: Document, layer: Element): void {
 // a <path> with an id; groups fail validation even when the group itself has an id.
 // Child paths are deduplicated (Inkscape sometimes emits duplicate subpaths as
 // artefacts) and their d attributes are concatenated into one compound path.
+// Collects the shape-bearing <path> elements of a group. Inkscape/Figma exports
+// sometimes draw a shape by referencing a definition with <use xlink:href="#id">
+// (the geometry lives in <defs>); those referenced paths, or the paths inside a
+// referenced group, count as the group's shapes too.
+function collectGroupPaths(doc: Document, group: Element): Element[] {
+  const paths: Element[] = Array.from(group.querySelectorAll("path"));
+  for (const use of Array.from(group.querySelectorAll("use"))) {
+    const href = use.getAttribute("href") ?? use.getAttribute("xlink:href") ?? "";
+    if (!href.startsWith("#")) continue;
+    const target = doc.getElementById(href.slice(1));
+    if (!target) continue;
+    if (target.tagName.toLowerCase() === "path") {
+      paths.push(target);
+    } else {
+      paths.push(...Array.from(target.querySelectorAll("path")));
+    }
+  }
+  return paths;
+}
+
 function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
   for (const child of Array.from(layer.children)) {
     if (child.tagName.toLowerCase() !== "g") continue;
 
+    const shapePaths = collectGroupPaths(doc, child);
     const seenDs = new Set<string>();
     const uniqueDs: string[] = [];
-    for (const pathEl of Array.from(child.querySelectorAll("path"))) {
+    for (const pathEl of shapePaths) {
       const d = pathEl.getAttribute("d");
       if (d && !seenDs.has(d)) {
         seenDs.add(d);
@@ -252,9 +273,10 @@ function flattenGroupsToCompoundPaths(doc: Document, layer: Element): void {
     const id = child.getAttribute("id");
     if (id) merged.setAttribute("id", id);
 
-    const firstPath = child.querySelector("path");
+    const firstPath = shapePaths[0];
     if (firstPath) {
-      const fill = firstPath.getAttribute("fill");
+      // A <use> carries the fill for a definition-backed shape that has none of its own.
+      const fill = firstPath.getAttribute("fill") ?? child.querySelector("use")?.getAttribute("fill");
       if (fill) merged.setAttribute("fill", fill);
       const style = firstPath.getAttribute("style");
       if (style) merged.setAttribute("style", style);
